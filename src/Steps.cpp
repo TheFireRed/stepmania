@@ -105,7 +105,8 @@ bool Steps::GetNoteDataFromSimfile()
 	RString extension = GetExtension(stepFile);
 	extension.MakeLower(); // must do this because the code is expecting lowercase
 
-	if (extension.empty() || extension == "ssc") // remember cache files.
+	if (extension.empty() || extension == "ssc"
+		|| extension == "ats") // remember cache files.
 	{
 		SSCLoader loader;
 		if ( ! loader.LoadNoteDataFromSimfile(stepFile, *this) )
@@ -587,6 +588,23 @@ bool Steps::HasSignificantTimingChanges() const
 	}
 
 	return false;
+}
+
+const RString Steps::GetMusicPath() const
+{
+	return Song::GetSongAssetPath(
+		m_MusicFile.empty() ? m_pSong->m_sMusicFile : m_MusicFile,
+		m_pSong->GetSongDir());
+}
+
+const RString& Steps::GetMusicFile() const
+{
+	return m_MusicFile;
+}
+
+void Steps::SetMusicFile(const RString& file)
+{
+	m_MusicFile= file;
 }
 
 void Steps::SetCachedRadarValues( const RadarValues v[NUM_PLAYERS] )

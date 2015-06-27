@@ -473,7 +473,7 @@ void ScreenSelectMaster::UpdateSelectableChoices()
 	}
 	FOREACH(PlayerNumber, vpns, pn)
 	{
-		if(on_unplayable[*pn])
+		if(on_unplayable[*pn] && first_playable != -1)
 		{
 			ChangeSelection(*pn, first_playable < m_iChoice[*pn] ? MenuDir_Left :
 				MenuDir_Right, first_playable);
@@ -540,7 +540,7 @@ bool ScreenSelectMaster::MenuLeft( const InputEventPlus &input )
 	if( Move(pn, MenuDir_Left) )
 	{
 		m_TrackingRepeatingInput = input.MenuI;
-		m_soundChange.Play();
+		m_soundChange.Play(true);
 		MESSAGEMAN->Broadcast( (MessageID)(Message_MenuLeftP1+pn) );
 		MESSAGEMAN->Broadcast( (MessageID)(Message_MenuSelectionChanged) );
 
@@ -571,7 +571,7 @@ bool ScreenSelectMaster::MenuRight( const InputEventPlus &input )
 	if( Move(pn, MenuDir_Right) )
 	{
 		m_TrackingRepeatingInput = input.MenuI;
-		m_soundChange.Play();
+		m_soundChange.Play(true);
 		MESSAGEMAN->Broadcast( (MessageID)(Message_MenuRightP1+pn) );
 		MESSAGEMAN->Broadcast( (MessageID)(Message_MenuSelectionChanged) );
 
@@ -602,7 +602,7 @@ bool ScreenSelectMaster::MenuUp( const InputEventPlus &input )
 	if( Move(pn, MenuDir_Up) )
 	{
 		m_TrackingRepeatingInput = input.MenuI;
-		m_soundChange.Play();
+		m_soundChange.Play(true);
 		MESSAGEMAN->Broadcast( (MessageID)(Message_MenuUpP1+pn) );
 		MESSAGEMAN->Broadcast( (MessageID)(Message_MenuSelectionChanged) );
 
@@ -633,7 +633,7 @@ bool ScreenSelectMaster::MenuDown( const InputEventPlus &input )
 	if( Move(pn, MenuDir_Down) )
 	{
 		m_TrackingRepeatingInput = input.MenuI;
-		m_soundChange.Play();
+		m_soundChange.Play(true);
 		MESSAGEMAN->Broadcast( (MessageID)(Message_MenuDownP1+pn) );
 		MESSAGEMAN->Broadcast( (MessageID)(Message_MenuSelectionChanged) );
 
@@ -925,7 +925,7 @@ bool ScreenSelectMaster::MenuStart( const InputEventPlus &input )
 	// double press is enabled and the player hasn't made their first press
 	if(DOUBLE_PRESS_TO_SELECT && !m_bDoubleChoice[pn])
 	{
-		m_soundStart.PlayCopy();
+		m_soundStart.PlayCopy(true);
 		m_bDoubleChoice[pn] = true;
 
 		if(SHOW_SCROLLER)
@@ -954,7 +954,7 @@ bool ScreenSelectMaster::MenuStart( const InputEventPlus &input )
 
 	// Play a copy of the sound, so it'll finish playing even if we leave the screen immediately.
 	if( mc->m_sSoundPath.empty() && !m_bDoubleChoiceNoSound )
-		m_soundStart.PlayCopy();
+		m_soundStart.PlayCopy(true);
 
 	if( mc->m_sScreen.empty() )
 	{

@@ -76,7 +76,7 @@ void RageTexture::GetFrameDimensionsFromFileName( RString sPath, int* piFramesWi
 
 const RectF *RageTexture::GetTextureCoordRect( int iFrameNo ) const
 {
-	return &m_TextureCoordRects[iFrameNo];
+	return &m_TextureCoordRects[iFrameNo % GetNumFrames()];
 }
 
 // lua start
@@ -114,6 +114,7 @@ public:
 	DEFINE_METHOD(GetTextureHeight, GetTextureHeight());
 	DEFINE_METHOD(GetImageWidth, GetImageWidth());
 	DEFINE_METHOD(GetImageHeight, GetImageHeight());
+	DEFINE_METHOD(GetPath, GetID().filename);
 
 	LunaRageTexture()
 	{
@@ -129,6 +130,7 @@ public:
 		ADD_METHOD(GetTextureHeight);
 		ADD_METHOD(GetImageWidth);
 		ADD_METHOD(GetImageHeight);
+		ADD_METHOD(GetPath);
 	}
 };
 

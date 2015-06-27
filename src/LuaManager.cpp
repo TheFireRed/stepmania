@@ -771,7 +771,7 @@ bool LuaHelpers::RunScriptFile( const RString &sFile )
 	{
 		LUA->Release( L );
 		sError = ssprintf( "Lua runtime error: %s", sError.c_str() );
-		Dialog::OK( sError, "LUA_ERROR" );
+		LuaHelpers::ReportScriptError(sError);
 		return false;
 	}
 	LUA->Release( L );
@@ -1044,8 +1044,8 @@ LuaFunction( ProductFamily, (RString) PRODUCT_FAMILY );
 LuaFunction( ProductVersion, (RString) product_version );
 LuaFunction( ProductID, (RString) PRODUCT_ID );
 
-extern const char *const version_date;
-extern const char *const version_time;
+extern char const * const version_date;
+extern char const * const version_time;
 LuaFunction( VersionDate, (RString) version_date );
 LuaFunction( VersionTime, (RString) version_time );
 

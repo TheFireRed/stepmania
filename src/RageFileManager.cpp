@@ -464,6 +464,13 @@ bool RageFileManager::Remove( const RString &sPath_ )
 	return bDeleted;
 }
 
+bool RageFileManager::DeleteRecursive( const RString &sPath )
+{
+	// On some OS's, non-empty directories cannot be deleted.
+	// This is a work-around that can delete both files and non-empty directories
+	return ::DeleteRecursive(sPath);
+}
+
 void RageFileManager::CreateDir( const RString &sDir )
 {
 	RString sTempFile = sDir + "newdir.temp.newdir";
@@ -515,11 +522,11 @@ bool RageFileManager::Mount( const RString &sType, const RString &sRoot_, const 
 	// Unmount anything that was previously mounted here.
 	Unmount( sType, sRoot, sMountPoint );
 
-	CHECKPOINT;
+	CHECKPOINT_M( ssprintf("About to make a driver with \"%s\", \"%s\"", sType.c_str(), sRoot.c_str()));
 	RageFileDriver *pDriver = MakeFileDriver( sType, sRoot );
 	if( pDriver == NULL )
 	{
-		CHECKPOINT;
+		CHECKPOINT_M( ssprintf("Can't mount unknown VFS type \"%s\", root \"%s\"", sType.c_str(), sRoot.c_str() ) );
 
 		if( LOG )
 			LOG->Warn("Can't mount unknown VFS type \"%s\", root \"%s\"", sType.c_str(), sRoot.c_str() );
@@ -528,7 +535,7 @@ bool RageFileManager::Mount( const RString &sType, const RString &sRoot_, const 
 		return false;
 	}
 
-	CHECKPOINT;
+	CHECKPOINT_M("Driver %s successfully made.");
 
 	LoadedDriver *pLoadedDriver = new LoadedDriver;
 	pLoadedDriver->m_pDriver = pDriver;

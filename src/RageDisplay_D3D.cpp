@@ -294,18 +294,19 @@ D3DFORMAT FindBackBufferType(bool bWindowed, int iBPP)
 	vector<D3DFORMAT> vBackBufferFormats; // throw all possibilities in here
 
 	// When windowed, add all formats; otherwise add only formats that match dwBPP.
-	if( iBPP == 16 || bWindowed )
-	{
-		vBackBufferFormats.push_back( D3DFMT_R5G6B5 );
-		vBackBufferFormats.push_back( D3DFMT_X1R5G5B5 );
-		vBackBufferFormats.push_back( D3DFMT_A1R5G5B5 );
-	}
 	if( iBPP == 32 || bWindowed )
 	{
 		vBackBufferFormats.push_back( D3DFMT_R8G8B8 );
 		vBackBufferFormats.push_back( D3DFMT_X8R8G8B8 );
 		vBackBufferFormats.push_back( D3DFMT_A8R8G8B8 );
 	}
+	if( iBPP == 16 || bWindowed )
+	{
+		vBackBufferFormats.push_back( D3DFMT_R5G6B5 );
+		vBackBufferFormats.push_back( D3DFMT_X1R5G5B5 );
+		vBackBufferFormats.push_back( D3DFMT_A1R5G5B5 );
+	}
+	
 
 	if( !bWindowed && iBPP != 16 && iBPP != 32 )
 	{
@@ -351,7 +352,7 @@ RString SetD3DParams( bool &bNewDeviceOut )
 			D3DADAPTER_DEFAULT, 
 			D3DDEVTYPE_HAL, 
 			GraphicsWindow::GetHwnd(),
-			D3DCREATE_SOFTWARE_VERTEXPROCESSING | D3DCREATE_MULTITHREADED,
+			D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_MULTITHREADED,
 			&g_d3dpp, 
 			&g_pd3dDevice );
 		if( FAILED(hr) )
@@ -1115,6 +1116,12 @@ void RageDisplay_D3D::SetBlendMode( BlendMode mode )
 	case BLEND_ADD:
 		g_pd3dDevice->SetRenderState( D3DRS_SRCBLEND,  D3DBLEND_SRCALPHA );
 		g_pd3dDevice->SetRenderState( D3DRS_DESTBLEND, D3DBLEND_ONE );
+		break;
+		// This is not the right way to do BLEND_SUBTRACT.  This code is only here
+		// to prevent crashing when someone tries to use it. -Kyz
+		case BLEND_SUBTRACT:
+		g_pd3dDevice->SetRenderState( D3DRS_SRCBLEND,  D3DBLEND_SRCALPHA );
+		g_pd3dDevice->SetRenderState( D3DRS_DESTBLEND, D3DBLEND_ZERO );
 		break;
 	case BLEND_MODULATE:
 		g_pd3dDevice->SetRenderState( D3DRS_SRCBLEND,  D3DBLEND_ZERO );

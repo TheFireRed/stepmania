@@ -1,6 +1,31 @@
 # Traditional Compilation File Stuff.
 *.o
 *.obj
+*.a
+
+# CMake Files/Directories
+CMakeFiles/
+CMakeCache.txt
+CMakeScripts/
+cmake_install.cmake
+CPackConfig.cmake
+CPackSourceConfig.cmake
+# The following are generated from CMake, and thus should be stopped.
+.codelite/
+StepMania.project
+StepMania.workspace
+version.hpp
+Build/*
+Build/*/*
+Debug/
+Release/
+Contents/
+verdata.*
+StepMania-debug
+Xcode/Info.StepMania.plist
+Xcode/plistHelper.hpp
+src/version_updater/VersionUpdater
+src/generated
 
 # Text Editor Based Items
 ___*
@@ -20,6 +45,10 @@ ___*
 .cvsignore
 *.diff
 *.patch
+*_BACKUP_*
+*_BASE_*
+*_LOCAL_*
+*_REMOTE_*
 
 # Mac Programming Files
 *.pbxuser
@@ -35,7 +64,6 @@ UserInterfaceState.xcuserstate
 contents.xcworkspacedata
 xcschememanagement.plist
 PBProject/Hardware.plist
-lib*_link.a
 
 # Mac General Files
 *.app
@@ -49,6 +77,7 @@ lib*_link.a
 *.suo
 *.exp
 *.ilk
+*.map
 
 # Windows General Files
 Thumbs.db
@@ -73,6 +102,14 @@ src/config.h
 src/config.h.in
 src/stamp-h1
 GtkModule.so
+StepMania
+core
+
+# Version control specific.
+*.BACKUP.*
+*.BASE.*
+*.LOCAL.*
+*.REMOTE.*
 
 # StepMania Specific
 *.smzip
@@ -108,7 +145,6 @@ bundle/ffmpeg/*/*.so.*
 bundle/ffmpeg/*/*.ver
 bundle/ffmpeg/*/*.def
 bundle/ffmpeg/*/*.orig.def
-bundle/ffmpeg/*/*.dll.a
 bundle/ffmpeg/*/*.lib
 src/build-*
 src/Release-*
@@ -118,7 +154,6 @@ src/libtomcrypt/Debug
 src/libtommath/build-*
 src/libtommath/Release-*
 src/libtommath/Debug
-src/*.a
 src/*.so
 ffmpeg-*
 Data/SpeedMods.txt
@@ -147,3 +182,4 @@ BuildLog.htm
 *.swp
 *.pc
 *.d
+

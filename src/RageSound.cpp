@@ -392,17 +392,21 @@ void RageSound::SoundIsFinishedPlaying()
 	m_Mutex.Unlock();
 }
 
-void RageSound::Play( const RageSoundParams *pParams )
+void RageSound::Play(bool is_action, const RageSoundParams *pParams)
 {
 	if( m_pSource == NULL )
 	{
 		LOG->Warn( "RageSound::Play: sound not loaded" );
 		return;
 	}
+	if(is_action && PREFSMAN->m_MuteActions)
+	{
+		return;
+	}
 
 	if( IsPlaying() )
 	{
-		PlayCopy( pParams );
+		PlayCopy(is_action, pParams);
 		return;
 	}
 
@@ -412,8 +416,12 @@ void RageSound::Play( const RageSoundParams *pParams )
 	StartPlaying();
 }
 
-void RageSound::PlayCopy( const RageSoundParams *pParams ) const
+void RageSound::PlayCopy(bool is_action, const RageSoundParams *pParams) const
 {
+	if(is_action && PREFSMAN->m_MuteActions)
+	{
+		return;
+	}
 	RageSound *pSound = new RageSound( *this );
 
 	if( pParams )
@@ -637,6 +645,19 @@ void RageSound::SetStopModeFromString( const RString &sStopMode )
 class LunaRageSound: public Luna<RageSound>
 {
 public:
+	static int get_length(T* p, lua_State* L)
+	{
+		RageSoundReader* reader= p->GetSoundReader();
+		if(reader == NULL)
+		{
+			lua_pushnumber(L, -1.0f);
+		}
+		else
+		{
+			lua_pushnumber(L, reader->GetLength() / 1000.0f);
+		}
+		return 1;
+	}
 	static int pitch( T* p, lua_State *L )
 	{
 		RageSoundParams params( p->GetParams() );
@@ -695,6 +716,7 @@ public:
 
 	LunaRageSound()
 	{
+		ADD_METHOD(get_length);
 		ADD_METHOD( pitch );
 		ADD_METHOD( speed );
 		ADD_METHOD( volume );

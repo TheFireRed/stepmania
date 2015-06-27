@@ -712,16 +712,15 @@ void BackgroundImpl::Layer::UpdateCurBGChange( const Song *pSong, float fLastMus
 	if( m_aBGChanges.size() == 0 )
 		return;
 
-	float fBeat, fBPS, fThrowAway;
-	bool bFreeze;
-	int iThrowAway;
-	pSong->m_SongTiming.GetBeatAndBPSFromElapsedTime( fCurrentTime, fBeat, fBPS, bFreeze, bFreeze, iThrowAway, fThrowAway );
+	TimingData::GetBeatArgs beat_info;
+	beat_info.elapsed_time= fCurrentTime;
+	pSong->m_SongTiming.GetBeatAndBPSFromElapsedTime(beat_info);
 
 	// Calls to Update() should *not* be scaled by music rate; fCurrentTime is. Undo it.
 	const float fRate = GAMESTATE->m_SongOptions.GetCurrent().m_fMusicRate;
 
 	// Find the BGSegment we're in
-	const int i = FindBGSegmentForBeat( fBeat );
+	const int i = FindBGSegmentForBeat(beat_info.beat);
 
 	float fDeltaTime = fCurrentTime - fLastMusicSeconds;
 	if( i != -1  &&  i != m_iCurBGChangeIndex )	// we're changing backgrounds
@@ -963,7 +962,7 @@ void BrightnessOverlay::FadeToActualBrightness()
 	SetActualBrightness();
 }
 
-Background::Background()				{ m_pImpl = new BackgroundImpl; this->AddChild(m_pImpl); }
+Background::Background()				{ m_disable_draw= false; m_pImpl = new BackgroundImpl; this->AddChild(m_pImpl); }
 Background::~Background()				{ SAFE_DELETE( m_pImpl ); }
 void Background::Init()					{ m_pImpl->Init(); }
 void Background::LoadFromSong( const Song *pSong )	{ m_pImpl->LoadFromSong(pSong); }

@@ -81,6 +81,10 @@ void ScreenEditMenu::HandleScreenMessage( const ScreenMessage SM )
 
 		Song* pSong = GAMESTATE->m_pCurSong;
 		Steps* pStepsToDelete = GAMESTATE->m_pCurSteps[PLAYER_1];
+		FOREACH_PlayerNumber(pn)
+		{
+			GAMESTATE->m_pCurSteps[pn].Set(NULL);
+		}
 		bool bSaveSong = !pStepsToDelete->WasLoadedFromProfile();
 		pSong->DeleteSteps( pStepsToDelete );
 		SONGMAN->Invalidate( pSong );
@@ -262,6 +266,18 @@ bool ScreenEditMenu::MenuStart( const InputEventPlus & )
 		ScreenPrompt::Prompt( SM_None, STEPS_WILL_BE_LOST.GetValue() + "\n\n" + CONTINUE_WITH_DELETE.GetValue(),
 		                      PROMPT_YES_NO, ANSWER_NO );
 		break;
+	case EditMenuAction_LoadAutosave:
+		if(pSong)
+		{
+			FOREACH_PlayerNumber(pn)
+			{
+				GAMESTATE->m_pCurSteps[pn].Set(NULL);
+			}
+			pSong->LoadAutosaveFile();
+			SONGMAN->Invalidate(pSong);
+			SCREENMAN->SendMessageToTopScreen( SM_RefreshSelector );
+		}
+		break;
 	case EditMenuAction_Create:
 		ASSERT( !pSteps );
 		{
@@ -340,6 +356,7 @@ bool ScreenEditMenu::MenuStart( const InputEventPlus & )
 		}
 		return true;
 	case EditMenuAction_Delete:
+	case EditMenuAction_LoadAutosave:
 		return true;
 	default:
 		FAIL_M(ssprintf("Invalid edit menu action: %i", action));

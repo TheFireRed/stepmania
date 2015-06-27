@@ -372,6 +372,27 @@ void GameState::Reset()
 
 void GameState::JoinPlayer( PlayerNumber pn )
 {
+	// Make sure the join will be successful before doing it. -Kyz
+	{
+		int players_joined= 0;
+		for(int i= 0; i < NUM_PLAYERS; ++i)
+		{
+			players_joined+= m_bSideIsJoined[i];
+		}
+		if(players_joined > 0)
+		{
+			const Style* cur_style= GetCurrentStyle(PLAYER_INVALID);
+			if(cur_style)
+			{
+				const Style* new_style= GAMEMAN->GetFirstCompatibleStyle(m_pCurGame,
+					players_joined + 1, cur_style->m_StepsType);
+				if(new_style == NULL)
+				{
+					return;
+				}
+			}
+		}
+	}
 	/* If joint premium and we're not taking away a credit for the 2nd join,
 	 * give the new player the same number of stage tokens that the old player
 	 * has. */
@@ -403,7 +424,7 @@ void GameState::JoinPlayer( PlayerNumber pn )
 	// assume that the second player will be joined immediately afterwards and
 	// don't try to change the style. -Kyz
 	const Style* cur_style= GetCurrentStyle(PLAYER_INVALID);
-	if( ALLOW_LATE_JOIN  &&  cur_style != NULL && !(pn == PLAYER_1 &&
+	if(cur_style != NULL && !(pn == PLAYER_1 &&
 			(cur_style->m_StyleType == StyleType_TwoPlayersTwoSides ||
 				cur_style->m_StyleType == StyleType_TwoPlayersSharedSides)))
 	{
@@ -671,33 +692,6 @@ int GameState::GetNumStagesForCurrentSongAndStepsOrCourse() const
 	int iNumStagesOfThisSong = 1;
 	if( m_pCurSong )
 	{
-		const Style *pStyle = GetCurrentStyle(PLAYER_INVALID);
-		int numSidesJoined = GetNumSidesJoined();
-		if( pStyle == NULL )
-		{
-			const Steps *pSteps = NULL;
-			if( this->GetMasterPlayerNumber() != PlayerNumber_Invalid )
-				pSteps = m_pCurSteps[this->GetMasterPlayerNumber()];
-			// Don't call GetFirstCompatibleStyle if numSidesJoined == 0.
-			// This happens because on SContinue when players are unjoined,
-			// pCurSteps will still be set while no players are joined. -Chris
-			if( pSteps && numSidesJoined > 0 )
-			{
-				// If a style isn't set, use the style of the selected steps.
-				StepsType st = pSteps->m_StepsType;
-				pStyle = GAMEMAN->GetFirstCompatibleStyle( m_pCurGame, numSidesJoined, st );
-			}
-			else
-			{
-				/* If steps aren't set either, pick any style for the number of
-				 * joined players, or one player if no players are joined. */
-				vector<const Style*> vpStyles;
-				int iJoined = max( numSidesJoined, 1 );
-				GAMEMAN->GetCompatibleStyles( m_pCurGame, iJoined, vpStyles );
-				ASSERT( !vpStyles.empty() );
-				pStyle = vpStyles[0];
-			}
-		}
 		/* Extra stages need to only count as one stage in case a multi-stage
 		 * song is chosen. */
 		if( IsAnExtraStage() )
@@ -1077,6 +1071,73 @@ void GameState::ForceSharedSidesMatch()
 	}
 }
 
+void GameState::ForceOtherPlayersToCompatibleSteps(PlayerNumber main)
+{
+	if(IsCourseMode())
+	{
+		Trail* steps_to_match= m_pCurTrail[main].Get();
+		if(steps_to_match == NULL) { return; }
+		int num_players= GAMESTATE->GetNumPlayersEnabled();
+		StyleType styletype_to_match= GAMEMAN->GetFirstCompatibleStyle(
+			GAMESTATE->GetCurrentGame(), num_players, steps_to_match->m_StepsType)
+			->m_StyleType;
+		FOREACH_EnabledPlayer(pn)
+		{
+			Trail* pn_steps= m_pCurTrail[pn].Get();
+			bool match_failed= pn_steps == NULL;
+			if(steps_to_match != pn_steps && pn_steps != NULL)
+			{
+				StyleType pn_styletype= GAMEMAN->GetFirstCompatibleStyle(
+					GAMESTATE->GetCurrentGame(), num_players, pn_steps->m_StepsType)
+					->m_StyleType;
+				if(styletype_to_match == StyleType_TwoPlayersSharedSides ||
+					pn_styletype == StyleType_TwoPlayersSharedSides)
+				{
+					match_failed= true;
+				}
+			}
+			if(match_failed)
+			{
+				m_pCurTrail[pn].Set(steps_to_match);
+			}
+		}
+	}
+	else
+	{
+		Steps* steps_to_match= m_pCurSteps[main].Get();
+		if(steps_to_match == NULL) { return; }
+		int num_players= GAMESTATE->GetNumPlayersEnabled();
+		StyleType styletype_to_match= GAMEMAN->GetFirstCompatibleStyle(
+			GAMESTATE->GetCurrentGame(), num_players, steps_to_match->m_StepsType)
+			->m_StyleType;
+		RString music_to_match= steps_to_match->GetMusicFile();
+		FOREACH_EnabledPlayer(pn)
+		{
+			Steps* pn_steps= m_pCurSteps[pn].Get();
+			bool match_failed= pn_steps == NULL;
+			if(steps_to_match != pn_steps && pn_steps != NULL)
+			{
+				StyleType pn_styletype= GAMEMAN->GetFirstCompatibleStyle(
+					GAMESTATE->GetCurrentGame(), num_players, pn_steps->m_StepsType)
+					->m_StyleType;
+				if(styletype_to_match == StyleType_TwoPlayersSharedSides ||
+					pn_styletype == StyleType_TwoPlayersSharedSides)
+				{
+					match_failed= true;
+				}
+				if(music_to_match != pn_steps->GetMusicFile())
+				{
+					match_failed= true;
+				}
+			}
+			if(match_failed)
+			{
+				m_pCurSteps[pn].Set(steps_to_match);
+			}
+		}
+	}
+}
+
 void GameState::Update( float fDelta )
 {
 	m_SongOptions.Update( fDelta );
@@ -1380,14 +1441,44 @@ RString GameState::GetPlayerDisplayName( PlayerNumber pn ) const
 
 bool GameState::PlayersCanJoin() const
 {
-	bool b = GetNumSidesJoined() == 0 || GetCurrentStyle(PLAYER_INVALID) == NULL;	// selecting a style finalizes the players
+	if(GetNumSidesJoined() == 0)
+	{
+		return true;
+	}
+	// If we check the style and it comes up NULL, either the style has not been
+	// chosen, or we're on ScreenSelectMusic with AutoSetStyle.
+	// If the style does not come up NULL, we might be on a screen in a custom
+	// theme that wants to allow joining after the style is set anyway.
+	// Either way, we can't use the existence of a style to decide.
+	// -Kyz
 	if( ALLOW_LATE_JOIN.IsLoaded()  &&  ALLOW_LATE_JOIN )
 	{
 		Screen *pScreen = SCREENMAN->GetTopScreen();
-		if( pScreen )
-			b |= pScreen->AllowLateJoin();
+		if(pScreen)
+		{
+			if(!pScreen->AllowLateJoin())
+			{
+				return false;
+			}
+		}
+		// We can't use FOREACH_EnabledPlayer because that uses PlayersCanJoin
+		// in part of its logic chain. -Kyz
+		FOREACH_PlayerNumber(pn)
+		{
+			const Style* style= GetCurrentStyle(pn);
+			if(style)
+			{
+				const Style* compat_style= GAMEMAN->GetFirstCompatibleStyle(
+					m_pCurGame, 2, style->m_StepsType);
+				if(compat_style == NULL)
+				{
+					return false;
+				}
+			}
+		}
+		return true;
 	}
-	return b;
+	return false;
 }
 
 int GameState::GetNumSidesJoined() const
@@ -1446,7 +1537,16 @@ void GameState::SetCurrentStyle(const Style *style, PlayerNumber pn)
 	if(INPUTMAPPER)
 	{
 		if(GetCurrentStyle(pn) && GetCurrentStyle(pn)->m_StyleType == StyleType_OnePlayerTwoSides)
+		{
+			// If the other player is joined, unjoin them because this style only
+			// allows one player.
+			PlayerNumber other_pn= OPPOSITE_PLAYER[this->GetMasterPlayerNumber()];
+			if(GetNumSidesJoined() > 1)
+			{
+				UnjoinPlayer(other_pn);
+			}
 			INPUTMAPPER->SetJoinControllers(this->GetMasterPlayerNumber());
+		}
 		else
 			INPUTMAPPER->SetJoinControllers(PLAYER_INVALID);
 	}
@@ -1540,10 +1640,7 @@ bool GameState::IsHumanPlayer( PlayerNumber pn ) const
 	}
 	if( GetCurrentStyle(pn) == NULL )	// no style chosen
 	{
-		if( PlayersCanJoin() )
-			return m_bSideIsJoined[pn];	// only allow input from sides that have already joined
-		else
-			return true;	// if we can't join, then we're on a screen like MusicScroll or GameOver
+		return m_bSideIsJoined[pn];	// only allow input from sides that have already joined
 	}
 
 	StyleType type = GetCurrentStyle(pn)->m_StyleType;
@@ -1895,15 +1992,16 @@ void GameState::GetRankingFeats( PlayerNumber pn, vector<RankingFeat> &asFeatsOu
 
 	// Check for feats even if the PlayMode is rave or battle because the player
 	// may have made high scores then switched modes.
-	CHECKPOINT_M( ssprintf("PlayMode %i", int(m_PlayMode)) );
-	switch( m_PlayMode )
+	PlayMode mode = m_PlayMode.Get();
+	char const *modeStr = PlayModeToString(mode).c_str();
+	
+	CHECKPOINT_M( ssprintf("Getting the feats for %s", modeStr));
+	switch( mode )
 	{
 	case PLAY_MODE_REGULAR:
 	case PLAY_MODE_BATTLE:
 	case PLAY_MODE_RAVE:
 		{
-			CHECKPOINT;
-
 			StepsType st = GetCurrentStyle(pn)->m_StepsType;
 
 			// Find unique Song and Steps combinations that were played.
@@ -1924,14 +2022,14 @@ void GameState::GetRankingFeats( PlayerNumber pn, vector<RankingFeat> &asFeatsOu
 				ASSERT( sas.pSteps != NULL );
 				vSongAndSteps.push_back( sas );
 			}
-			CHECKPOINT;
+			CHECKPOINT_M( ssprintf("All songs/steps from %s gathered", modeStr));
 
 			sort( vSongAndSteps.begin(), vSongAndSteps.end() );
 
 			vector<SongAndSteps>::iterator toDelete = unique( vSongAndSteps.begin(), vSongAndSteps.end() );
 			vSongAndSteps.erase(toDelete, vSongAndSteps.end());
 
-			CHECKPOINT;
+			CHECKPOINT_M( "About to find records from the gathered.");
 			for( unsigned i=0; i<vSongAndSteps.size(); i++ )
 			{
 				Song* pSong = vSongAndSteps[i].pSong;
@@ -1997,7 +2095,7 @@ void GameState::GetRankingFeats( PlayerNumber pn, vector<RankingFeat> &asFeatsOu
 				}
 			}
 
-			CHECKPOINT;
+			CHECKPOINT_M("Getting the final evaluation stage stats.");
 			StageStats stats;
 			STATSMAN->GetFinalEvalStageStats( stats );
 
@@ -2057,7 +2155,6 @@ void GameState::GetRankingFeats( PlayerNumber pn, vector<RankingFeat> &asFeatsOu
 	case PLAY_MODE_ONI:
 	case PLAY_MODE_ENDLESS:
 		{
-			CHECKPOINT;
 			Course* pCourse = m_pCurCourse;
 			ASSERT( pCourse != NULL );
 			Trail *pTrail = m_pCurTrail[pn];
@@ -2593,6 +2690,7 @@ public:
 			Steps *pS = Luna<Steps>::check(L,2);
 			SetCompatibleStyleOrError(p, L, pS->m_StepsType, pn);
 			p->m_pCurSteps[pn].Set(pS);
+			p->ForceOtherPlayersToCompatibleSteps(pn);
 		}
 		COMMON_RETURN_SELF;
 	}
@@ -2623,6 +2721,7 @@ public:
 			Trail *pS = Luna<Trail>::check(L,2);
 			SetCompatibleStyleOrError(p, L, pS->m_StepsType, pn);
 			p->m_pCurTrail[pn].Set(pS);
+			p->ForceOtherPlayersToCompatibleSteps(pn);
 		}
 		COMMON_RETURN_SELF;
 	}

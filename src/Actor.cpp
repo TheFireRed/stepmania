@@ -17,6 +17,7 @@
 #include <typeinfo>
 
 static Preference<bool> g_bShowMasks("ShowMasks", false);
+static const float default_effect_period= 1.0f;
 
 /**
  * @brief Set up a hidden Actor that won't be drawn.
@@ -107,10 +108,7 @@ void Actor::InitState()
 #endif
 	m_fSecsIntoEffect = 0;
 	m_fEffectDelta = 0;
-	m_fEffectRampUp = 0.5f;
-	m_fEffectHoldAtHalf = 0;
-	m_fEffectRampDown = 0.5f;
-	m_fEffectHoldAtZero = 0;
+	SetEffectPeriod(default_effect_period);
 	m_fEffectOffset = 0;
 	m_EffectClock = CLOCK_TIMER;
 	m_vEffectMagnitude = RageVector3(0,0,10);
@@ -225,10 +223,12 @@ Actor::Actor( const Actor &cpy ):
 #endif
 	CPY( m_fSecsIntoEffect );
 	CPY( m_fEffectDelta );
-	CPY( m_fEffectRampUp );
-	CPY( m_fEffectHoldAtHalf );
-	CPY( m_fEffectRampDown );
-	CPY( m_fEffectHoldAtZero );
+	CPY(m_effect_ramp_to_half);
+	CPY(m_effect_hold_at_half);
+	CPY(m_effect_ramp_to_full);
+	CPY(m_effect_hold_at_full);
+	CPY(m_effect_hold_at_zero);
+	CPY(m_effect_period);
 	CPY( m_fEffectOffset );
 	CPY( m_EffectClock );
 
@@ -269,14 +269,7 @@ void Actor::LoadFromNode( const XNode* pNode )
 		// Load Name, if any.
 		const RString &sKeyName = pAttr->first;
 		const XNodeValue *pValue = pAttr->second;
-		if( sKeyName == "Name" )			SetName( pValue->GetValue<RString>() );
-		else if( sKeyName == "BaseRotationX" )		SetBaseRotationX( pValue->GetValue<float>() );
-		else if( sKeyName == "BaseRotationY" )		SetBaseRotationY( pValue->GetValue<float>() );
-		else if( sKeyName == "BaseRotationZ" )		SetBaseRotationZ( pValue->GetValue<float>() );
-		else if( sKeyName == "BaseZoomX" )		SetBaseZoomX( pValue->GetValue<float>() );
-		else if( sKeyName == "BaseZoomY" )		SetBaseZoomY( pValue->GetValue<float>() );
-		else if( sKeyName == "BaseZoomZ" )		SetBaseZoomZ( pValue->GetValue<float>() );
-		else if( EndsWith(sKeyName,"Command") )
+		if( EndsWith(sKeyName,"Command") )
 		{
 			LuaReference *pRef = new LuaReference;
 			pValue->PushValue( L );
@@ -284,6 +277,13 @@ void Actor::LoadFromNode( const XNode* pNode )
 			RString sCmdName = sKeyName.Left( sKeyName.size()-7 );
 			AddCommand( sCmdName, apActorCommands( pRef ) );
 		}
+		else if( sKeyName == "Name" )			SetName( pValue->GetValue<RString>() );
+		else if( sKeyName == "BaseRotationX" )		SetBaseRotationX( pValue->GetValue<float>() );
+		else if( sKeyName == "BaseRotationY" )		SetBaseRotationY( pValue->GetValue<float>() );
+		else if( sKeyName == "BaseRotationZ" )		SetBaseRotationZ( pValue->GetValue<float>() );
+		else if( sKeyName == "BaseZoomX" )		SetBaseZoomX( pValue->GetValue<float>() );
+		else if( sKeyName == "BaseZoomY" )		SetBaseZoomY( pValue->GetValue<float>() );
+		else if( sKeyName == "BaseZoomZ" )		SetBaseZoomZ( pValue->GetValue<float>() );
 	}
 
 	LUA->Release( L );
@@ -441,27 +441,26 @@ void Actor::PreDraw() // calculate actor properties
 		const float fTimeIntoEffect = fmodfp( m_fSecsIntoEffect+m_fEffectOffset, fTotalPeriod );
 
 		float fPercentThroughEffect;
-		if( fTimeIntoEffect < m_fEffectRampUp )
+		const float rup_plus_ath= m_effect_ramp_to_half + m_effect_hold_at_half;
+		const float rupath_plus_rdown= rup_plus_ath + m_effect_ramp_to_full;
+		const float rupathrdown_plus_atf= rupath_plus_rdown + m_effect_hold_at_full;
+		if(fTimeIntoEffect < m_effect_ramp_to_half)
 		{
-			fPercentThroughEffect = SCALE( 
-				fTimeIntoEffect, 
-				0, 
-				m_fEffectRampUp, 
-				0.0f, 
-				0.5f );
+			fPercentThroughEffect = SCALE(fTimeIntoEffect,
+				0, m_effect_ramp_to_half, 0.0f, 0.5f);
 		}
-		else if( fTimeIntoEffect < m_fEffectRampUp + m_fEffectHoldAtHalf )
+		else if(fTimeIntoEffect < rup_plus_ath)
 		{
 			fPercentThroughEffect = 0.5f;
 		}
-		else if( fTimeIntoEffect < m_fEffectRampUp + m_fEffectHoldAtHalf + m_fEffectRampDown )
+		else if(fTimeIntoEffect < rupath_plus_rdown)
 		{
-			fPercentThroughEffect = SCALE( 
-				fTimeIntoEffect, 
-				m_fEffectRampUp + m_fEffectHoldAtHalf, 
-				m_fEffectRampUp + m_fEffectHoldAtHalf + m_fEffectRampDown, 
-				0.5f, 
-				1.0f );
+			fPercentThroughEffect = SCALE(fTimeIntoEffect,
+				rup_plus_ath, rupath_plus_rdown, 0.5f, 1.0f);
+		}
+		else if(fTimeIntoEffect < rupathrdown_plus_atf)
+		{
+			fPercentThroughEffect= 1.0f;
 		}
 		else
 		{
@@ -539,18 +538,12 @@ void Actor::PreDraw() // calculate actor properties
 			{
 				float fPercentOffset = RageFastSin( fPercentThroughEffect*PI ); 
 				tempState.pos += m_vEffectMagnitude * fPercentOffset;
-				tempState.pos.x = roundf( tempState.pos.x );
-				tempState.pos.y = roundf( tempState.pos.y );
-				tempState.pos.z = roundf( tempState.pos.z );
 			}
 			break;
 		case bob:
 			{
 				float fPercentOffset = RageFastSin( fPercentThroughEffect*PI*2 ); 
 				tempState.pos += m_vEffectMagnitude * fPercentOffset;
-				tempState.pos.x = roundf( tempState.pos.x );
-				tempState.pos.y = roundf( tempState.pos.y );
-				tempState.pos.z = roundf( tempState.pos.z );
 			}
 			break;
 		case pulse:
@@ -801,7 +794,9 @@ void Actor::Update( float fDeltaTime )
 	{
 		m_fHibernateSecondsLeft -= fDeltaTime;
 		if( m_fHibernateSecondsLeft > 0 )
+		{
 			return;
+		}
 
 		// Grab the leftover time.
 		fDeltaTime = -m_fHibernateSecondsLeft;
@@ -815,69 +810,65 @@ void Actor::Update( float fDeltaTime )
 	this->UpdateInternal( fDeltaTime );
 }
 
-void Actor::UpdateInternal( float fDeltaTime )
+static void generic_global_timer_update(float new_time, float& effect_delta_time, float& time_into_effect)
+{
+	effect_delta_time= new_time - time_into_effect;
+	time_into_effect= new_time;
+}
+
+void Actor::UpdateInternal(float delta_time)
 {
 	if( m_bFirstUpdate )
 		m_bFirstUpdate = false;
 
-	switch( m_EffectClock )
+	switch(m_EffectClock)
 	{
-	case CLOCK_TIMER:
-		m_fSecsIntoEffect += fDeltaTime;
-		m_fEffectDelta = fDeltaTime;
-
-		/* Wrap the counter, so it doesn't increase indefinitely (causing loss
-		 * of precision if a screen is left to sit for a day). */
-		if( m_fSecsIntoEffect >= GetEffectPeriod() )
-			m_fSecsIntoEffect -= GetEffectPeriod();
-		break;
-
-	case CLOCK_TIMER_GLOBAL:
-	{
-		float fTime = RageTimer::GetTimeSinceStartFast();
-		m_fEffectDelta = fTime - m_fSecsIntoEffect;
-		m_fSecsIntoEffect = fTime;
-		break;
-	}
-
-	case CLOCK_BGM_BEAT:
-		m_fEffectDelta = g_fCurrentBGMBeat - m_fSecsIntoEffect;
-		m_fSecsIntoEffect = g_fCurrentBGMBeat;
-		break;
-
-	case CLOCK_BGM_BEAT_PLAYER1:
-		m_fEffectDelta = g_vfCurrentBGMBeatPlayer[PLAYER_1] - m_fSecsIntoEffect;
-		m_fSecsIntoEffect = g_vfCurrentBGMBeatPlayerNoOffset[PLAYER_1];
-		break;
-		
-	case CLOCK_BGM_BEAT_PLAYER2:
-		m_fEffectDelta = g_vfCurrentBGMBeatPlayer[PLAYER_2] - m_fSecsIntoEffect;
-		m_fSecsIntoEffect = g_vfCurrentBGMBeatPlayerNoOffset[PLAYER_2];
-		break;
-	
-	case CLOCK_BGM_TIME:
-		m_fEffectDelta = g_fCurrentBGMTime - m_fSecsIntoEffect;
-		m_fSecsIntoEffect = g_fCurrentBGMTime;
-		break;
-
-	case CLOCK_BGM_BEAT_NO_OFFSET:
-		m_fEffectDelta = g_fCurrentBGMBeatNoOffset - m_fSecsIntoEffect;
-		m_fSecsIntoEffect = g_fCurrentBGMBeatNoOffset;
-		break;
-
-	case CLOCK_BGM_TIME_NO_OFFSET:
-		m_fEffectDelta = g_fCurrentBGMTimeNoOffset - m_fSecsIntoEffect;
-		m_fSecsIntoEffect = g_fCurrentBGMTimeNoOffset;
-		break;
-
-	default:
-		if( m_EffectClock >= CLOCK_LIGHT_1 && m_EffectClock <= CLOCK_LIGHT_LAST )
-		{
-			int i = m_EffectClock - CLOCK_LIGHT_1;
-			m_fEffectDelta = g_fCabinetLights[i] - m_fSecsIntoEffect;
-			m_fSecsIntoEffect = g_fCabinetLights[i];
-		}
-		break;
+		case CLOCK_TIMER:
+			m_fSecsIntoEffect+= delta_time;
+			m_fEffectDelta= delta_time;
+			// Wrap the counter, so it doesn't increase indefinitely (causing loss
+			// of precision if a screen is left to sit for a day).
+			if(m_fSecsIntoEffect > GetEffectPeriod())
+			{
+				m_fSecsIntoEffect-= GetEffectPeriod();
+			}
+			break;
+		case CLOCK_TIMER_GLOBAL:
+			generic_global_timer_update(RageTimer::GetUsecsSinceStart(),
+				m_fEffectDelta, m_fSecsIntoEffect);
+			break;
+		case CLOCK_BGM_BEAT:
+			generic_global_timer_update(g_fCurrentBGMBeat,
+				m_fEffectDelta, m_fSecsIntoEffect);
+			break;
+		case CLOCK_BGM_BEAT_PLAYER1:
+			generic_global_timer_update(g_vfCurrentBGMBeatPlayer[PLAYER_1],
+				m_fEffectDelta, m_fSecsIntoEffect);
+			break;
+		case CLOCK_BGM_BEAT_PLAYER2:
+			generic_global_timer_update(g_vfCurrentBGMBeatPlayer[PLAYER_2],
+				m_fEffectDelta, m_fSecsIntoEffect);
+			break;
+		case CLOCK_BGM_TIME:
+			generic_global_timer_update(g_fCurrentBGMTime,
+				m_fEffectDelta, m_fSecsIntoEffect);
+			break;
+		case CLOCK_BGM_BEAT_NO_OFFSET:
+			generic_global_timer_update(g_fCurrentBGMBeatNoOffset,
+				m_fEffectDelta, m_fSecsIntoEffect);
+			break;
+		case CLOCK_BGM_TIME_NO_OFFSET:
+			generic_global_timer_update(g_fCurrentBGMTimeNoOffset,
+				m_fEffectDelta, m_fSecsIntoEffect);
+			break;
+		default:
+			if(m_EffectClock >= CLOCK_LIGHT_1 && m_EffectClock <= CLOCK_LIGHT_LAST)
+			{
+				generic_global_timer_update(
+					g_fCabinetLights[m_EffectClock - CLOCK_LIGHT_1],
+					m_fEffectDelta, m_fSecsIntoEffect);
+			}
+			break;
 	}
 
 	// update effect
@@ -893,7 +884,7 @@ void Actor::UpdateInternal( float fDeltaTime )
 		default: break;
 	}
 
-	this->UpdateTweening( fDeltaTime );
+	this->UpdateTweening(delta_time);
 }
 
 RString Actor::GetLineage() const
@@ -1065,45 +1056,69 @@ void Actor::StretchTo( const RectF &r )
 	SetZoomY( fNewZoomY );
 }
 
-
-void Actor::SetEffectPeriod( float fTime )
+void Actor::RecalcEffectPeriod()
 {
-	ASSERT( fTime > 0 );
-	m_fEffectRampUp = fTime/2;
-	m_fEffectHoldAtHalf = 0;
-	m_fEffectRampDown = fTime/2;
-	m_fEffectHoldAtZero = 0;
+	m_effect_period= m_effect_ramp_to_half + m_effect_hold_at_half +
+		m_effect_ramp_to_full + m_effect_hold_at_full + m_effect_hold_at_zero;
 }
 
-float Actor::GetEffectPeriod() const
+void Actor::SetEffectPeriod(float time)
 {
-	return m_fEffectRampUp + m_fEffectHoldAtHalf + m_fEffectRampDown + m_fEffectHoldAtZero;
+	ASSERT(time > 0);
+	m_effect_ramp_to_half= time/2;
+	m_effect_hold_at_half= 0;
+	m_effect_ramp_to_full= time/2;
+	m_effect_hold_at_full= 0;
+	m_effect_hold_at_zero= 0;
+	RecalcEffectPeriod();
 }
 
-void Actor::SetEffectTiming( float fRampUp, float fAtHalf, float fRampDown, float fAtZero )
+bool Actor::SetEffectTiming(float ramp_toh, float at_half, float ramp_tof, float at_full, float at_zero, RString& err)
 {
 	// No negative timings
-	ASSERT( fRampUp >= 0 && fAtHalf >= 0 && fRampDown >= 0 && fAtZero >= 0 );
+	if(ramp_toh < 0 || at_half < 0 || ramp_tof < 0 || at_full < 0 || at_zero < 0)
+	{
+		err= ssprintf("Effect timings (%f,%f,%f,%f,%f) must not be negative;",
+			ramp_toh, at_half, ramp_tof, at_zero, at_full);
+		return false;
+	}
 	// and at least one positive timing.
-	ASSERT( fRampUp > 0 || fAtHalf > 0 || fRampDown > 0 || fAtZero > 0 );
+	if(ramp_toh <= 0 && at_half <= 0 && ramp_tof <= 0 && at_full <= 0 && at_zero <= 0)
+	{
+		err= ssprintf("Effect timings (0,0,0,0,0) must not all be zero;");
+		return false;
+	}
+	m_effect_ramp_to_half= ramp_toh;
+	m_effect_hold_at_half= at_half;
+	m_effect_ramp_to_full= ramp_tof;
+	m_effect_hold_at_full= at_full;
+	m_effect_hold_at_zero= at_zero;
+	RecalcEffectPeriod();
+	return true;
+}
 
-	m_fEffectRampUp = fRampUp; 
-	m_fEffectHoldAtHalf = fAtHalf; 
-	m_fEffectRampDown = fRampDown;
-	m_fEffectHoldAtZero = fAtZero;
+bool Actor::SetEffectHoldAtFull(float haf, RString& err)
+{
+	return SetEffectTiming(m_effect_ramp_to_half, m_effect_hold_at_half,
+		m_effect_ramp_to_full, haf, m_effect_hold_at_zero, err);
 }
 
 // effect "macros"
+
+void Actor::ResetEffectTimeIfDifferent(Effect new_effect)
+{
+	if(m_Effect != new_effect)
+	{
+		m_Effect= new_effect;
+		m_fSecsIntoEffect = 0;
+	}
+}
 
 void Actor::SetEffectDiffuseBlink( float fEffectPeriodSeconds, RageColor c1, RageColor c2 )
 {
 	ASSERT( fEffectPeriodSeconds > 0 );
 	// todo: account for SSC_FUTURES -aj
-	if( m_Effect != diffuse_blink )
-	{
-		m_Effect = diffuse_blink;
-		m_fSecsIntoEffect = 0;
-	}
+	ResetEffectTimeIfDifferent(diffuse_blink);
 	SetEffectPeriod( fEffectPeriodSeconds );
 	m_effectColor1 = c1;
 	m_effectColor2 = c2;
@@ -1113,11 +1128,7 @@ void Actor::SetEffectDiffuseShift( float fEffectPeriodSeconds, RageColor c1, Rag
 {
 	ASSERT( fEffectPeriodSeconds > 0 );
 	// todo: account for SSC_FUTURES -aj
-	if( m_Effect != diffuse_shift )
-	{
-		m_Effect = diffuse_shift;
-		m_fSecsIntoEffect = 0;
-	}
+	ResetEffectTimeIfDifferent(diffuse_shift);
 	SetEffectPeriod( fEffectPeriodSeconds );
 	m_effectColor1 = c1;
 	m_effectColor2 = c2;
@@ -1127,11 +1138,7 @@ void Actor::SetEffectDiffuseRamp( float fEffectPeriodSeconds, RageColor c1, Rage
 {
 	ASSERT( fEffectPeriodSeconds > 0 );
 	// todo: account for SSC_FUTURES -aj
-	if( m_Effect != diffuse_ramp )
-	{
-		m_Effect = diffuse_ramp;
-		m_fSecsIntoEffect = 0;
-	}
+	ResetEffectTimeIfDifferent(diffuse_ramp);
 	SetEffectPeriod( fEffectPeriodSeconds );
 	m_effectColor1 = c1;
 	m_effectColor2 = c2;
@@ -1141,11 +1148,7 @@ void Actor::SetEffectGlowBlink( float fEffectPeriodSeconds, RageColor c1, RageCo
 {
 	ASSERT( fEffectPeriodSeconds > 0 );
 	// todo: account for SSC_FUTURES -aj
-	if( m_Effect != glow_blink )
-	{
-		m_Effect = glow_blink;
-		m_fSecsIntoEffect = 0;
-	}
+	ResetEffectTimeIfDifferent(glow_blink);
 	SetEffectPeriod( fEffectPeriodSeconds );
 	m_effectColor1 = c1;
 	m_effectColor2 = c2;
@@ -1155,11 +1158,7 @@ void Actor::SetEffectGlowShift( float fEffectPeriodSeconds, RageColor c1, RageCo
 {
 	ASSERT( fEffectPeriodSeconds > 0 );
 	// todo: account for SSC_FUTURES -aj
-	if( m_Effect != glow_shift )
-	{
-		m_Effect = glow_shift;
-		m_fSecsIntoEffect = 0;
-	}
+	ResetEffectTimeIfDifferent(glow_shift);
 	SetEffectPeriod( fEffectPeriodSeconds );
 	m_effectColor1 = c1;
 	m_effectColor2 = c2;
@@ -1169,11 +1168,7 @@ void Actor::SetEffectGlowRamp( float fEffectPeriodSeconds, RageColor c1, RageCol
 {
 	ASSERT( fEffectPeriodSeconds > 0 );
 	// todo: account for SSC_FUTURES -aj
-	if( m_Effect != glow_ramp )
-	{
-		m_Effect = glow_ramp;
-		m_fSecsIntoEffect = 0;
-	}
+	ResetEffectTimeIfDifferent(glow_ramp);
 	SetEffectPeriod( fEffectPeriodSeconds );
 	m_effectColor1 = c1;
 	m_effectColor2 = c2;
@@ -1183,11 +1178,7 @@ void Actor::SetEffectRainbow( float fEffectPeriodSeconds )
 {
 	ASSERT( fEffectPeriodSeconds > 0 );
 	// todo: account for SSC_FUTURES -aj
-	if( m_Effect != rainbow )
-	{
-		m_Effect = rainbow;
-		m_fSecsIntoEffect = 0;
-	}
+	ResetEffectTimeIfDifferent(rainbow);
 	SetEffectPeriod( fEffectPeriodSeconds );
 }
 
@@ -1195,11 +1186,7 @@ void Actor::SetEffectWag( float fPeriod, RageVector3 vect )
 {
 	ASSERT( fPeriod > 0 );
 	// todo: account for SSC_FUTURES -aj
-	if( m_Effect != wag )
-	{
-		m_Effect = wag;
-		m_fSecsIntoEffect = 0;
-	}
+	ResetEffectTimeIfDifferent(wag);
 	SetEffectPeriod( fPeriod );
 	m_vEffectMagnitude = vect;
 }
@@ -1612,7 +1599,16 @@ public:
 	}
 	static int stoptweening( T* p, lua_State *L )		{ p->StopTweening(); COMMON_RETURN_SELF; }
 	static int finishtweening( T* p, lua_State *L )		{ p->FinishTweening(); COMMON_RETURN_SELF; }
-	static int hurrytweening( T* p, lua_State *L )		{ p->HurryTweening(FArg(1)); COMMON_RETURN_SELF; }
+	static int hurrytweening( T* p, lua_State *L )
+	{
+		float time= FArg(1);
+		if(time < 0.0f)
+		{
+			luaL_error(L, "Tweening hurry factor cannot be negative. %f", time);
+		}
+		p->HurryTweening(time);
+		COMMON_RETURN_SELF;
+	}
 	static int GetTweenTimeLeft( T* p, lua_State *L )	{ lua_pushnumber( L, p->GetTweenTimeLeft() ); return 1; }
 	static int x( T* p, lua_State *L )			{ p->SetX(FArg(1)); COMMON_RETURN_SELF; }
 	static int y( T* p, lua_State *L )			{ p->SetY(FArg(1)); COMMON_RETURN_SELF; }
@@ -1711,19 +1707,30 @@ public:
 	}
 	static int effecttiming( T* p, lua_State *L )
 	{
-		float f1 = FArg(1), f2 = FArg(2), f3 = FArg(3), f4 = FArg(4);
-		if (f1 < 0 || f2 < 0 || f3 < 0 || f4 < 0)
+		float rth= FArg(1);
+		float hah= FArg(2);
+		float rtf= FArg(3);
+		float haz= FArg(4);
+		// Compatibility:  hold_at_full is optional.
+		float haf= 0;
+		if(lua_isnumber(L, 5))
 		{
-			LuaHelpers::ReportScriptErrorFmt("Effect timings (%f,%f,%f,%f) must not be negative; ignoring",
-					f1, f2, f3, f4);
-			COMMON_RETURN_SELF;
+			haf= FArg(5);
 		}
-		if (f1 == 0 && f2 == 0 && f3 == 0 && f4 == 0)
+		RString err;
+		if(!p->SetEffectTiming(rth, hah, rtf, haf, haz, err))
 		{
-			LuaHelpers::ReportScriptErrorFmt("Effect timings (0,0,0,0) must not all be zero; ignoring");
-			COMMON_RETURN_SELF;
+			luaL_error(L, err.c_str());
 		}
-		p->SetEffectTiming(FArg(1), FArg(2), FArg(3), FArg(4));
+		COMMON_RETURN_SELF;
+	}
+	static int effect_hold_at_full(T* p, lua_State*L)
+	{
+		RString err;
+		if(!p->SetEffectHoldAtFull(FArg(1), err))
+		{
+			luaL_error(L, err.c_str());
+		}
 		COMMON_RETURN_SELF;
 	}
 	static int effectoffset( T* p, lua_State *L )		{ p->SetEffectOffset(FArg(1)); COMMON_RETURN_SELF; }
@@ -2009,6 +2016,7 @@ public:
 		ADD_METHOD( effectcolor2 );
 		ADD_METHOD( effectperiod );
 		ADD_METHOD( effecttiming );
+		ADD_METHOD(effect_hold_at_full);
 		ADD_METHOD( effectoffset );
 		ADD_METHOD( effectclock );
 		ADD_METHOD( effectmagnitude );

@@ -23,6 +23,7 @@
 #include "ScoreKeeperRave.h"
 #include "LyricsLoader.h"
 #include "ActorUtil.h"
+#include "ArrowEffects.h"
 #include "RageSoundManager.h"
 #include "RageSoundReader.h"
 #include "RageTextureManager.h"
@@ -336,6 +337,7 @@ void ScreenGameplay::Init()
 	GIVE_UP_START_TEXT.Load(		m_sName, "GiveUpStartText" );
 	GIVE_UP_BACK_TEXT.Load(			m_sName, "GiveUpBackText" );
 	GIVE_UP_ABORTED_TEXT.Load(		m_sName, "GiveUpAbortedText" );
+	SKIP_SONG_TEXT.Load(m_sName, "SkipSongText");
 	GIVE_UP_SECONDS.Load(			m_sName, "GiveUpSeconds" );
 	MUSIC_FADE_OUT_SECONDS.Load(		m_sName, "MusicFadeOutSeconds" );
 	OUT_TRANSITION_LENGTH.Load(		m_sName, "OutTransitionLength" );
@@ -346,6 +348,7 @@ void ScreenGameplay::Init()
 	MIN_SECONDS_TO_STEP_NEXT_SONG.Load(	m_sName, "MinSecondsToStepNextSong" );
 	START_GIVES_UP.Load(			m_sName, "StartGivesUp" );
 	BACK_GIVES_UP.Load(			m_sName, "BackGivesUp" );
+	SELECT_SKIPS_SONG.Load(m_sName, "SelectSkipsSong");
 	GIVING_UP_GOES_TO_PREV_SCREEN.Load(	m_sName, "GivingUpGoesToPrevScreen" );
 	FAIL_ON_MISS_COMBO.Load(		m_sName, "FailOnMissCombo" );
 	ALLOW_CENTER_1_PLAYER.Load(		m_sName, "AllowCenter1Player" );
@@ -899,6 +902,7 @@ void ScreenGameplay::Init()
 	LoadNextSong();
 
 	m_GiveUpTimer.SetZero();
+	m_SkipSongTimer.SetZero();
 }
 
 bool ScreenGameplay::Center1Player() const
@@ -1477,7 +1481,7 @@ void ScreenGameplay::StartPlayingSong( float fMinTimeToNotes, float fMinTimeToMu
 			p.m_LengthSeconds = fSecondsToStartFadingOutMusic + MUSIC_FADE_OUT_SECONDS - p.m_StartSecond;
 		}
 	}
-	m_pSoundMusic->Play( &p );
+	m_pSoundMusic->Play(false, &p);
 	if( m_bPaused )
 		m_pSoundMusic->Pause( true );
 
@@ -1486,6 +1490,13 @@ void ScreenGameplay::StartPlayingSong( float fMinTimeToNotes, float fMinTimeToMu
 	UpdateSongPosition(0);
 
 	ASSERT( GAMESTATE->m_Position.m_fMusicSeconds > -4000 ); /* make sure the "fake timer" code doesn't trigger */
+	FOREACH_EnabledPlayer(pn)
+	{
+		if(GAMESTATE->m_pCurSteps[pn])
+		{
+			GAMESTATE->m_pCurSteps[pn]->GetTimingData()->PrepareLookup();
+		}
+	}
 }
 
 
@@ -1501,7 +1512,7 @@ void ScreenGameplay::PauseGame( bool bPause, GameController gc )
 	if( bPause && m_DancingState == STATE_OUTRO )
 		return;
 
-	AbortGiveUp( false );
+	ResetGiveUpTimers(false);
 
 	m_bPaused = bPause;
 	m_PauseController = gc;
@@ -1592,7 +1603,7 @@ void ScreenGameplay::BeginScreen()
 		p.StopMode = RageSoundParams::M_CONTINUE;
 		p.m_StartSecond = startOffset;
 		m_pSoundMusic->SetProperty( "AccurateSync", true );
-		m_pSoundMusic->Play( &p );
+		m_pSoundMusic->Play(false, &p);
 
 		UpdateSongPosition(0);
 	}
@@ -1918,6 +1929,7 @@ void ScreenGameplay::Update( float fDeltaTime )
 			// update give up
 			bool bGiveUpTimerFired = !m_GiveUpTimer.IsZero() && m_GiveUpTimer.Ago() > GIVE_UP_SECONDS;
 			m_gave_up= bGiveUpTimerFired;
+			m_skipped_song= !m_SkipSongTimer.IsZero() && m_SkipSongTimer.Ago() > GIVE_UP_SECONDS;
 
 
 			bool bAllHumanHaveBigMissCombo = true;
@@ -1934,7 +1946,7 @@ void ScreenGameplay::Update( float fDeltaTime )
 			{
 				bAllHumanHaveBigMissCombo = FAIL_ON_MISS_COMBO.GetValue() != -1 && STATSMAN->m_CurStageStats.GetMinimumMissCombo() >= (unsigned int)FAIL_ON_MISS_COMBO;
 			}
-			if( bGiveUpTimerFired || bAllHumanHaveBigMissCombo )
+			if(bGiveUpTimerFired || bAllHumanHaveBigMissCombo || m_skipped_song)
 			{
 				STATSMAN->m_CurStageStats.m_bGaveUp = true;
 				FOREACH_EnabledPlayerNumberInfo( m_vPlayerInfo, pi )
@@ -1943,9 +1955,9 @@ void ScreenGameplay::Update( float fDeltaTime )
 					pi->GetPlayerStageStats()->m_bDisqualified |= bGiveUpTimerFired;    // Don't disqualify if failing for miss combo.  The player should still be eligable for a high score on courses.
 				}
 
-				AbortGiveUp( false );
+				ResetGiveUpTimers(false);
 
-				if( GIVING_UP_GOES_TO_PREV_SCREEN )
+				if(GIVING_UP_GOES_TO_PREV_SCREEN && !m_skipped_song)
 				{
 					BeginBackingOutFromGameplay();
 				}
@@ -1986,9 +1998,7 @@ void ScreenGameplay::Update( float fDeltaTime )
 	}
 
 	PlayTicks();
-
 	UpdateLights();
-
 	SendCrossedMessages();
 
 	if( !m_bForceNoNetwork && NSMAN->useSMserver )
@@ -2002,6 +2012,34 @@ void ScreenGameplay::Update( float fDeltaTime )
 				if( m_bShowScoreboard && NSMAN->ChangedScoreboard(cn) && GAMESTATE->GetFirstDisabledPlayer() != PLAYER_INVALID )
 					m_Scoreboard[cn].SetText( NSMAN->m_Scoreboard[cn] );
 	}
+	// ArrowEffects::Update call moved because having it happen once per
+	// NoteField (which means twice in two player) seemed wasteful. -Kyz
+	ArrowEffects::Update();
+}
+
+void ScreenGameplay::DrawPrimitives()
+{
+	// ScreenGameplay::DrawPrimitives exists so that the notefield board can be
+	// above the song background and underneath everything else.  This way, a
+	// theme can put a screen filter in the notefield board and not have it
+	// obscure custom elements on the screen.  Putting the screen filter in the
+	// notefield board simplifies placement because it ensures that the filter
+	// is in the same place as the notefield, instead of forcing the filter to
+	// check conditions and metrics that affect the position of the notefield.
+	// This also solves the problem of the ComboUnderField metric putting the
+	// combo underneath the opaque notefield board.
+	// -Kyz
+	if(m_pSongBackground)
+	{
+		m_pSongBackground->m_disable_draw= false;
+		m_pSongBackground->Draw();
+		m_pSongBackground->m_disable_draw= true;
+	}
+	FOREACH_EnabledPlayerNumberInfo(m_vPlayerInfo, pi)
+	{
+		pi->m_pPlayer->DrawNoteFieldBoard();
+	}
+	ScreenWithMenuElements::DrawPrimitives();
 }
 
 void ScreenGameplay::FailFadeRemovePlayer(PlayerInfo* pi)
@@ -2319,7 +2357,7 @@ void ScreenGameplay::SendCrossedMessages()
 void ScreenGameplay::BeginBackingOutFromGameplay()
 {
 	m_DancingState = STATE_OUTRO;
-	AbortGiveUp( false );
+	ResetGiveUpTimers(false);
 
 	m_pSoundMusic->StopPlaying();
 	m_GameplayAssist.StopPlaying(); // Stop any queued assist ticks.
@@ -2336,19 +2374,43 @@ void ScreenGameplay::BeginBackingOutFromGameplay()
 		m_Cancel.StartTransitioning( SM_DoPrevScreen );
 }
 
+void ScreenGameplay::AbortGiveUpText(bool show_abort_text)
+{
+	m_textDebug.StopTweening();
+	if(show_abort_text)
+	{
+		m_textDebug.SetText(GIVE_UP_ABORTED_TEXT);
+	}
+	// otherwise tween out the text that's there
+
+	m_textDebug.BeginTweening(1/2.f);
+	m_textDebug.SetDiffuse(RageColor(1,1,1,0));
+}
+
+void ScreenGameplay::AbortSkipSong(bool show_text)
+{
+	if(m_SkipSongTimer.IsZero())
+	{
+		return;
+	}
+	AbortGiveUpText(show_text);
+	m_SkipSongTimer.SetZero();
+}
+
 void ScreenGameplay::AbortGiveUp( bool bShowText )
 {
 	if( m_GiveUpTimer.IsZero() )
+	{
 		return;
-
-	m_textDebug.StopTweening();
-	if( bShowText )
-		m_textDebug.SetText( GIVE_UP_ABORTED_TEXT );
-	// otherwise tween out the text that's there
-
-	m_textDebug.BeginTweening( 1/2.f );
-	m_textDebug.SetDiffuse( RageColor(1,1,1,0) );
+	}
+	AbortGiveUpText(bShowText);
 	m_GiveUpTimer.SetZero();
+}
+
+void ScreenGameplay::ResetGiveUpTimers(bool show_text)
+{
+	AbortSkipSong(show_text);
+	AbortGiveUp(show_text);
 }
 
 
@@ -2391,6 +2453,22 @@ bool ScreenGameplay::Input( const InputEventPlus &input )
 		{
 			bHoldingGiveUp |= ( START_GIVES_UP && input.MenuI == GAME_BUTTON_START );
 			bHoldingGiveUp |= ( BACK_GIVES_UP && input.MenuI == GAME_BUTTON_BACK );
+		}
+		// Allow holding SELECT to skip the current song in course mode. -Kyz
+		if(GAMESTATE->IsCourseMode() && SELECT_SKIPS_SONG &&
+			input.MenuI == GAME_BUTTON_SELECT)
+		{
+			if(input.type == IET_RELEASE)
+			{
+				AbortSkipSong(true);
+			}
+			else if(input.type == IET_FIRST_PRESS && m_SkipSongTimer.IsZero())
+			{
+				m_textDebug.SetText(SKIP_SONG_TEXT);
+				m_textDebug.PlayCommand("StartOn");
+				m_SkipSongTimer.Touch();
+			}
+			return true;
 		}
 
 		if( bHoldingGiveUp )
@@ -2474,7 +2552,7 @@ bool ScreenGameplay::Input( const InputEventPlus &input )
 		// handle a step or battle item activate
 		if( GAMESTATE->IsHumanPlayer( input.pn ) )
 		{
-			AbortGiveUp( true );
+			ResetGiveUpTimers(true);
 
 			if( GamePreferences::m_AutoPlay == PC_HUMAN && GAMESTATE->m_pPlayerState[input.pn]->m_PlayerOptions.GetCurrent().m_fPlayerAutoPlay == 0 )
 			{
@@ -2548,6 +2626,13 @@ void ScreenGameplay::SaveStats()
 
 void ScreenGameplay::SongFinished()
 {
+	FOREACH_EnabledPlayer(pn)
+	{
+		if(GAMESTATE->m_pCurSteps[pn])
+		{
+			GAMESTATE->m_pCurSteps[pn]->GetTimingData()->ReleaseLookup();
+		}
+	}
 	AdjustSync::HandleSongEnd();
 	SaveStats(); // Let subclasses save the stats.
 	/* Extremely important: if we don't remove attacks before moving on to the next
@@ -2624,7 +2709,7 @@ void ScreenGameplay::HandleScreenMessage( const ScreenMessage SM )
 	}
 	else if( SM == SM_NotesEnded )	// received while STATE_DANCING
 	{
-		AbortGiveUp( false ); // don't allow giveup while the next song is loading
+		ResetGiveUpTimers(false); // don't allow giveup while the next song is loading
 
 		/* Do this in LoadNextSong, so we don't tween off old attacks until
 		 * m_NextSong finishes. */
@@ -2659,9 +2744,16 @@ void ScreenGameplay::HandleScreenMessage( const ScreenMessage SM )
 		const bool bIsLastSong = IsLastSong();
 
 		LOG->Trace( "bAllReallyFailed = %d, bStopCourseEarly = %d, "
-			"bIsLastSong = %d, m_gave_up = %d", bAllReallyFailed, bStopCourseEarly,
-			bIsLastSong, m_gave_up );
+			"bIsLastSong = %d, m_gave_up = %d, m_skipped_song = %d",
+			bAllReallyFailed, bStopCourseEarly, bIsLastSong, m_gave_up,
+			m_skipped_song);
 
+		if(!bIsLastSong && m_skipped_song)
+		{
+			// Load the next song in the course.
+			HandleScreenMessage( SM_StartLoadingNextSong );
+			return;
+		}
 		if( bStopCourseEarly || bAllReallyFailed || bIsLastSong || m_gave_up )
 		{
 			// Time to leave from ScreenGameplay
@@ -2699,7 +2791,7 @@ void ScreenGameplay::HandleScreenMessage( const ScreenMessage SM )
 		if( m_DancingState == STATE_OUTRO )	// ScreenGameplay already ended
 			return;		// ignore
 		m_DancingState = STATE_OUTRO;
-		AbortGiveUp( false );
+		ResetGiveUpTimers(false);
 
 		GAMESTATE->RemoveAllActiveAttacks();
 		FOREACH_EnabledPlayerInfo( m_vPlayerInfo, pi )
@@ -2830,10 +2922,15 @@ void ScreenGameplay::HandleScreenMessage( const ScreenMessage SM )
 	}
 	else if( SM == SM_PlayToasty )
 	{
-		// todo: make multiple toasties work -aj
-		if( g_bEasterEggs )
-			if( !m_Toasty.IsTransitioning()  &&  !m_Toasty.IsFinished() )	// don't play if we've already played it once
+		if(g_bEasterEggs)
+		{
+			if(PREFSMAN->m_AllowMultipleToasties ||
+				m_Toasty.IsWaiting())
+			{
+				m_Toasty.Reset();
 				m_Toasty.StartTransitioning();
+			}
+		}
 	}
 	else if( ScreenMessageHelpers::ScreenMessageToString(SM).find("0Combo") != string::npos )
 	{
@@ -2854,9 +2951,9 @@ void ScreenGameplay::HandleScreenMessage( const ScreenMessage SM )
 	{
 		int iTrickLevel = SM-SM_BattleTrickLevel1+1;
 		PlayAnnouncer( ssprintf("gameplay battle trick level%d",iTrickLevel), 3 );
-		if( SM == SM_BattleTrickLevel1 ) m_soundBattleTrickLevel1.Play();
-		else if( SM == SM_BattleTrickLevel2 ) m_soundBattleTrickLevel2.Play();
-		else if( SM == SM_BattleTrickLevel3 ) m_soundBattleTrickLevel3.Play();
+		if( SM == SM_BattleTrickLevel1 ) m_soundBattleTrickLevel1.Play(false);
+		else if( SM == SM_BattleTrickLevel2 ) m_soundBattleTrickLevel2.Play(false);
+		else if( SM == SM_BattleTrickLevel3 ) m_soundBattleTrickLevel3.Play(false);
 	}
 	else if( SM >= SM_BattleDamageLevel1 && SM <= SM_BattleDamageLevel3 )
 	{
@@ -2901,7 +2998,7 @@ void ScreenGameplay::HandleScreenMessage( const ScreenMessage SM )
 	else if( SM == SM_BeginFailed )
 	{
 		m_DancingState = STATE_OUTRO;
-		AbortGiveUp( false );
+		ResetGiveUpTimers(false);
 		m_GameplayAssist.StopPlaying(); // Stop any queued assist ticks.
 		TweenOffScreen();
 		m_Failed.StartTransitioning( SM_DoNextScreen );

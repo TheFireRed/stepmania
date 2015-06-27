@@ -4,6 +4,317 @@ The StepMania 5 Changelog covers all post-sm-ssc changes. For a list of changes
 from StepMania 4 alpha 5 to sm-ssc v1.2.5, see Changelog_sm-ssc.txt.
 ________________________________________________________________________________
 
+2015/06/10
+----------
+* [global] get_music_file_length lua function added. [kyzentun]
+  multiapproach lua function now takes an optional 4th argument to multiply
+  the speeds by. [kyzentun]
+* [NoteDisplay] 1px seam in hold cap rendering fixed. [A.C/waiei]
+* [RageSound] get_length lua function added. [kyzentun]
+
+2015/06/06
+----------
+* [ScreenInitialScreenIsInvalid] Error screen for themes that set an invalid
+  initial screen. [kyzentun]
+
+2015/06/05
+----------
+* [global] update_centering lua function exposed. [kyzentun]
+* [ScreenOverscanConfig] New screen in _fallback for interactively adjusting
+  the preferences that already existed for dealing with overscan. [kyzentun]
+* [Actor] BlendMode_Subtract no longer crashes on the d3d renderer.  It does
+  not do subtraction blending correctly, this just prevents the crash.
+  [kyzentun]
+
+2015/06/03
+----------
+* [Actor] bounce and bob effects no longer round pixel coords. [kyzentun]
+* [RageFile] Exposed Flush function to Lua. [kyzentun]
+
+2015/05/29
+----------
+* [OptionsList] The OptionsListQuickChange, OptionsListLeft, and
+  OptionsListRight messages now have a Selection parameter that has the id of
+  the selection the player moved to. [nixtrix]
+
+2015/05/24
+----------
+* [Gameplay] Autokeysounds are no longer twice as loud when playing
+  keysounded charts with two players. [nixtrix]
+
+2015/05/15
+----------
+* [BMS] .lua files defined in the #BMP tags now work as BG animations, and the
+  #difficulty tag is now supported. [nixtrix]
+* [general] BackInEventMode code now works when called from either player.
+  [nixtrix]
+* [cmake] JACK is now properly found by CMake.
+* [theme] Preview music fadeout time is now adjustable by the metric
+  SampleMusicFadeoutSeconds. [nixtrix]
+* [Song] Setting a sample length of 0 uses the length of the entire preview
+  file. [nixtrix]
+
+================================================================================
+StepMania 5.0.8 | 20150510
+--------------------------------------------------------------------------------
+
+2015/05/10
+----------
+* [General] Screenshots are not tagged with song title or screen name because
+  this causes problems when titles have UTF8 or slashes. [kyzentun]
+
+2015/05/09
+----------
+* [general] Workaround for the axis problem added.  Set the Axis Fix
+  preference under Input Options to true if you have the axis problem.
+  [Fighter19]
+* [general] Added XML to Lua converter.  See Docs/Themerdocs/XmlToLua.txt for
+  details. [kyzentun]
+
+2015/05/08
+----------
+* [compiling] Added -DWITH_CRYSTALHD_DISABLED cmake options to allow more
+  users to build on Linux. [wolfman2000]
+
+2015/05/05
+----------
+* [Gameplay] Holding Select on gameplay now skips the current song in course
+  or endless mode. [kyzentun]
+
+2015/04/30
+----------
+* [beat] Default key configuration slightly tweaked, space is now the
+  default scratch key, key7 is now mapped to right instead of key3.
+  Backwards and shuffle chart mods now ignore the scratch column. [jobn]
+
+2015/04/27
+----------
+* [general] "Do not show again" button on missing texture dialog works now.
+  If the background or banner file for a song doesn't exist when the song is
+  cached, the cache file will have a blank path so Stepmania won't try to
+  load the nonexistent banner or background.
+
+2015/04/25
+----------
+* [General] Screenshot key now checks whether there is a current song, and
+  puts the song title and current screen name in the screenshot filename. [kyzentun]
+
+2015/04/24
+----------
+* [Gameplay] Toasty animation can now occur multiple times during gameplay. [kyzentun]
+
+2015/04/23
+----------
+* [ServiceMenu] Entries in service menu rearranged to hopefully organize them
+  better.  ScreenOptionsInputSub and ScreenOptionsDisplaySub added.  Updating
+  a theme to show the options for the new screens should be a simple matter of
+  changing the LineNames entry for ScreenOptionsService to include
+  "InputOptions" and "SoundGraphics". [tuxdude]
+
+2015/04/18
+----------
+* [EditMode] Fixed bug that made alter menu choices prompt for clearing. [kyzentun]
+* [NoteColumnRenderer] Added handling for diffuse and glow to make rainbow
+  and related effects work. [kyzentun]
+
+2015/04/15
+----------
+* [compiling] -DWITH_LIBVA option added to cmake building to fix compiling
+  problems for some linux users. [wolfman2000]
+
+2015/04/14
+----------
+* [SelectMusic] Disabled late join on Extra Stage to prevent crash on
+  Evaluation Summary. [kyzentun]
+
+2015/04/13
+----------
+* [EditMode] Fixed Revert From Disk to actually work. [kyzentun]
+* [japanese] Language update from hanubeki. [hanubeki]
+
+2015/04/11
+----------
+* [dev] cpack support for installing. [wolfman2000]
+* [TimingData] Fixed bug that made steps on the same row as a stop and a bpm
+  change unhittable. [kyzentun]
+
+2015/04/10
+----------
+* [Profile] Kluged together a fix for scores on edit charts not being loaded
+  until after the chart is played. [kyzentun]
+
+2015/04/08
+----------
+* [ActorSound] IsAction attribute added.  get/set_is_action functions added.
+  [kyzentun]
+* [GameSoundManager] is_action arg added to PlayOnce. [kyzentun]
+
+2015/04/06
+----------
+* [global] rec_print_children and rec_print_table lua functions added to
+  _fallback. [kyzentun]
+* [Language] Dutch translation updated. [Thumbsy]
+* [RadarValues] Stream, Voltage, Air, Freeze, and Chaos are no longer capped
+  at 1.  Stream and Voltage no longer count hold heads twice.
+  RadarCategory_Notes added, which counts all notes.
+  Scoring bug fixes related to radar calculation. [kyzentun]
+* [ScreenSelectGame] Exit option returns to ScreenOptionsService unless the
+  game type actually changed. [Wallacoloo]
+
+2015/04/04
+----------
+* [EditMode] Added submenus to the timing edit menu to allow shifting,
+  copying, and pasting any or all timing segments in the selected region or
+  after the current cursor position. [kyzentun]
+  Shifting menus in edit mode now have choices for 1, 2, or 4 measures or 2
+  beats. [kyzentun]
+* [global] Fixed crash on OS X for certain dance pads when in Japanese
+  locale. [Wallacoloo]
+
+2015/04/03
+----------
+* [ScreenGameplay] The NoteField board is now underneath everything except
+  the backgound.  This means underneath any custom actors on the underlay or
+  overlay or decoration layers, and also underneath the combo/judgment even
+  when the ComboUnderField metric is true. [kyzentun]
+  Fixed bug in screen filter in default theme that made it not appear under
+  the field when a solo file was played without Center1Player. [kyzentun]
+
+2015/04/02
+----------
+* [global] commify function exposed to lua. [kyzentun]
+
+================================================================================
+StepMania 5.0.7 | 20150401
+--------------------------------------------------------------------------------
+
+2015/03/30
+----------
+* [Select Music] Ctrl+Shift+R mapped to reload the current song. [kyzentun]
+* [Song] ReloadFromSongDir lua function exposed. [kyzentun]
+* [Preferences] NeverCacheList preference added.  It's a comma separated
+  list of group names, if a song is in one of the named groups, it is never
+  cached. [kyzentun]
+
+2015/03/27
+----------
+* [Select Music] Ability to delete the current song by pressing Ctrl+Backspace added. [Wallacoloo]
+
+2015/03/24
+----------
+* [Sprite/RageTexture] GetTexturePath moved to RageTexture and renamed to
+  GetPath. [kyzentun]
+
+2015/03/22
+----------
+* [Dev] Primary build method of all platforms changed to CMake.  People
+  building from source must install CMake (min 2.8.12) and read
+  Build/README.md for building instructions. [wolfman2000]
+
+2015/03/18
+----------
+* [OSX] Empty Stepmania directory created on desktop removed. [dguzek]
+
+2015/03/17
+----------
+* [ActorFrameTexture] Example added to Themerdocs/Examples/Example_Actors/.
+  Crash fixes for AFTs. [sigatrev]
+
+2015/03/15
+----------
+* [Sprite] GetTexturePath added. [kyzentun]
+
+2015/03/12
+----------
+* [Language] Docs/Changelog_language.txt added for tracking language changes.
+
+=======
+================================================================================
+StepMania 5.0.7rc | 20150309
+--------------------------------------------------------------------------------
+
+2015/03/09
+----------
+* [EditMode] Autosave every 5 minutes added. [kyzentun]
+* [General] NotesLoaderSM, NotesLoaderSSC, IniFile::ReadFile rewritten,
+  load times substantially faster. [kyzentun]
+* [Preference] HarshHotLifePenalty preference added, for toggling whether
+  LifeMeterBar takes away .1 life when it's full. [kyzentun]
+
+2015/03/08
+----------
+* [EditMode] Clearing an area now prompts for confirmation if it contains
+  EditClearPromptThreshold notes or more.  EditClearPromptThreshold is a
+  preference that can be set in the Advanced Options section, or in the
+  options in Edit Mode. [kyzentun]
+
+2015/03/05
+----------
+* [Graphics] DX9 support improved, giving a large speed boost and fixing the
+  problem that made people get stuck with 16bit color. [xwidghet]
+
+2015/03/04
+----------
+* [Loading] The song length from the cache is used now.  This cut loading time
+  by 30% for kyz. [kyzentun]
+
+2015/03/02
+----------
+* [Song] Per-chart music feature added.  Each chart can have a MUSIC tag.
+  [kyzentun]
+
+2015/03/01
+----------
+* [SelectMusic] Select Music now plays music file named by #PREVIEW tag if
+  it's not blank, instead of using the song file for the sample music.  The
+  sample length is read from the preview file.  The sample start is treated as
+  0. [kyzentun]
+* [Song] GetPreviewMusicPath added. [kyzentun]
+* [foreach] foreach_ordered lua function now works on tables that have both
+  number and string keys.  Number keys are iterated over first. [kyzentun]
+
+2015/02/28
+----------
+* [General] Pause/Break key now toggles "action" sounds off or on.  There is
+  also a button in the F3 debug menu (press A, there are so many that it is
+  off the bottom) for people that don't have a Pause/Break key. [kyzentun]
+
+2015/02/27
+----------
+* [ActorFrame] Fixed RemoveChild and RemoveAllChildren lua functions to
+  delete the children instead of leaking memory. [kyzentun]
+* [Font] Asserts and other things that caused Stepmania to crash on font
+  mistakes now emit non-fatal errors. [kyzentun]
+
+2015/02/26
+----------
+* [PaneDisplay] Changed to print an error when metrics or player number are
+  omitted instead of crashing. [kyzentun]
+* [Screen] Fixed crash when AddInputCallback is passed nil. [kyzentun]
+
+2015/02/22
+----------
+* [BitmapText] Place characters of right-to-left alphabets correctly.
+  (untested) [roothorick]
+
+================================================================================
+StepMania 5.0.6 | 20150217
+--------------------------------------------------------------------------------
+
+2015/02/16
+----------
+* [EditMode] Fixed mistake in TimingData that broke editing bpms. [kyzentun]
+  Fixed crash when deleting steps. [kyzentun]
+* [InputMapper] Backslash can be mapped now. [kyzentun]
+
+================================================================================
+StepMania 5.0.5 | 20150214
+--------------------------------------------------------------------------------
+
+2015/02/12
+----------
+* [InputMapper] Added D-Force Automappings [shakesoda]
+
 2015/02/04
 ----------
 * [ActorFrame] GetUpdateRate added. [kyzentun]

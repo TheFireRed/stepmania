@@ -50,14 +50,20 @@ local stepmania_credits= {
 	{
 		name= "Translators",
 		"John Reactor (Polish)",
-		"Jarosław Pietras (Polish)",
 		"DHalens (Spanish)",
 		"@Niler_jp (Japanese)",
-		"Deamon007 (Dutch)"
+		"Deamon007 (Dutch)",
+		{type= "subsection", name= "5.0.5 update"},
+		"Kevin O. (Thumbsy) (Dutch)",
+		"Grégory Doche (French)",
+		"Jarosław Pietras (Polish)",
+		"Alejandro G. de la Muñoza (Spanish)",
+		"Raymund Zacharias (German)",
 	},
 	{
 		name= "Other Contributors",
 		"Aldo Fregoso (Aldo_MX)", -- delays and much more. StepMania AMX creator
+		"Alfred Sorenson", -- new lua bindings
 		"A.C/@waiei", -- custom scoring fixes + Hybrid scoring
 		"cerbo", -- lua bindings and other fun stuff
 		"cesarmades", -- pump/cmd* noteskins
@@ -69,18 +75,22 @@ local stepmania_credits= {
 		"djpohly", -- piuio kernel module, XML compatibility, other useful stuff
 		"galopin", -- piu PlayStation2 usb mat support
 		"gholms", -- automake 1.11 support
+		"hanubeki (@803832)", -- beginner helper fix, among various other things
 		"juanelote", -- SongManager:GetSongGroupByIndex, JumpToNext/PrevGroup logic mods
 		"Kaox", -- pump/default noteskin
 		-- Add Graphics/CreditsLogo name.png and change your entry to a table like this to look super pro.
 		{logo= "kyzentun", name= "Kyzentun"}, -- new lua bindings, theme documentation
 		"Mad Matt", -- new lua bindings
+		"Matt McCutchen", -- minor fix for some dance pads on linux
 		"NitroX72", -- pump/frame noteskin
+		"nixtrix", -- various BMS features and other fixes
 		"Petriform", -- default theme music
+		"psmay", -- SextetStream driver and related things
 		"桜為小鳩/Sakurana-Kobato (@sakuraponila)", -- custom scoring fixes
 		"Samuel Kim (1a2a3a2a1a)", -- various beat mode fixes
-		"hanubeki (@803832)", -- beginner helper fix, among various other things
+		"tuxdude", -- minor changes to service menu layout
 		"v1toko", -- x-mode from StepNXA
-		"Alfred Sorenson", -- new lua bindings
+		"Wallacoloo", -- delete songs, other fixes
 	},
 	{
 		name= "Special Thanks",
@@ -169,7 +179,7 @@ local special_logos= {
 		OnCommand= function(self)
 			self:GetParent():GetChild("name"):distort(.25) -- minecraft is broken, -kyz
 		end
-	}
+	},
 }
 
 -- Go through the credits and swap in the special logos.

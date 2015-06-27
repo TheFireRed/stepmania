@@ -193,6 +193,7 @@
 		<Function name='URLEncode'/>
 		<Function name='UndocumentedFeature'/>
 		<Function name='UnlockRewardTypeToLocalizedString'/>
+		<Function name='update_centering'/>
 		<Function name='Var'/>
 		<Function name='VersionDate'/>
 		<Function name='VersionTime'/>
@@ -209,6 +210,8 @@
 		<Function name='class'/>
 		<Function name='collectgarbage'/>
 		<Function name='color'/>
+		<Function name='commify'/>
+		<Function name='convert_xml_bgs'/>
 		<Function name='dofile'/>
 		<Function name='error'/>
 		<Function name='fapproach'/>
@@ -218,6 +221,7 @@
 		<Function name='getenv'/>
 		<Function name='getfenv'/>
 		<Function name='getmetatable'/>
+		<Function name='get_music_file_length'/>
 		<Function name='ipairs'/>
 		<Function name='ivalues'/>
 		<Function name='join'/>
@@ -238,6 +242,8 @@
 		<Function name='rawequal'/>
 		<Function name='rawget'/>
 		<Function name='rawset'/>
+		<Function name='rec_print_children'/>
+		<Function name='rec_print_table'/>
 		<Function name='require'/>
 		<Function name='round'/>
 		<Function name='scale'/>
@@ -370,6 +376,7 @@
 			<Function name='effectoffset'/>
 			<Function name='effectperiod'/>
 			<Function name='effecttiming'/>
+			<Function name='effect_hold_at_full'/>
 			<Function name='fadebottom'/>
 			<Function name='fadeleft'/>
 			<Function name='faderight'/>
@@ -1365,6 +1372,7 @@
 			<Function name='AtEOF'/>
 			<Function name='ClearError'/>
 			<Function name='Close'/>
+			<Function name='Flush'/>
 			<Function name='GetError'/>
 			<Function name='GetLine'/>
 			<Function name='Open'/>
@@ -1386,6 +1394,7 @@
 			<Function name='GetDescriptions'/>
 		</Class>
 		<Class name='RageSound'>
+			<Function name='get_length'/>
 			<Function name='SetParam'/>
 			<Function name='SetProperty'/>
 			<Function name='pitch'/>
@@ -1399,6 +1408,7 @@
 			<Function name='GetTextureHeight'/>
 			<Function name='GetImageWidth'/>
 			<Function name='GetImageHeight'/>
+			<Function name='GetPath'/>
 			<Function name='GetTextureCoordRect'/>
 			<Function name='loop'/>
 			<Function name='position'/>
@@ -1542,6 +1552,7 @@
 			<Function name='GetMusicPath'/>
 			<Function name='GetOneSteps'/>
 			<Function name='GetOrigin'/>
+			<Function name='GetPreviewMusicPath'/>
 			<Function name='GetPreviewVidPath'/>
 			<Function name='GetSampleLength'/>
 			<Function name='GetSampleStart'/>

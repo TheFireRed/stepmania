@@ -5,6 +5,7 @@
 
 #include <map>
 #include <vector>
+#include <sstream>
 class RageFileDriver;
 
 /** @brief Safely delete pointers. */
@@ -360,7 +361,7 @@ RString SecondsToMMSS( float fSecs );
 RString PrettyPercent( float fNumerator, float fDenominator );
 inline RString PrettyPercent( int fNumerator, int fDenominator ) { return PrettyPercent( float(fNumerator), float(fDenominator) ); }
 RString Commify( int iNum );
-RString Commify( RString sNum, RString sSeperator = "," );
+RString Commify(const RString& num, const RString& sep= ",", const RString& dot= ".");
 RString FormatNumberAndSuffix( int i );
 
 
@@ -381,6 +382,11 @@ RString SetExtension( const RString &path, const RString &ext );
 RString GetExtension( const RString &sPath );
 RString GetFileNameWithoutExtension( const RString &sPath );
 void MakeValidFilename( RString &sName );
+
+bool FindFirstFilenameContaining(
+	const vector<RString>& filenames, RString& out,
+	const vector<RString>& starts_with,
+	const vector<RString>& contains, const vector<RString>& ends_with);
 
 extern const wchar_t INVALID_CHAR;
 
@@ -409,8 +415,11 @@ float StringToFloat( const RString &sString );
 RString FloatToString( const float &num );
 bool StringToFloat( const RString &sString, float &fOut );
 // Better than IntToString because you can check for success.
-bool operator>>(const RString& lhs, int& rhs);
-bool operator>>(const RString& lhs, float& rhs);
+template<class T>
+inline bool operator>>(const RString& lhs, T& rhs)
+{
+	return !!(istringstream(lhs) >> rhs);
+}
 
 RString WStringToRString( const wstring &sString );
 RString WcharToUTF8( wchar_t c );

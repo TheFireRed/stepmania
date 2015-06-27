@@ -3,6 +3,7 @@
 #include "ScreenManager.h"
 #include "PrefsManager.h"
 #include "SongManager.h"
+#include "Game.h"
 #include "GameManager.h"
 #include "GameSoundManager.h"
 #include "GameConstantsAndTypes.h"
@@ -26,10 +27,12 @@
 #include "CommonMetrics.h"
 #include "BannerCache.h"
 //#include "BackgroundCache.h"
+#include "ScreenPrompt.h"
 #include "Song.h"
 #include "InputEventPlus.h"
 #include "RageInput.h"
 #include "OptionsList.h"
+#include "RageFileManager.h"
 
 static const char *SelectionStateNames[] = {
 	"SelectingSong",
@@ -50,6 +53,7 @@ AutoScreenMessage( SM_SongChanged );
 AutoScreenMessage( SM_SortOrderChanging );
 AutoScreenMessage( SM_SortOrderChanged );
 AutoScreenMessage( SM_BackFromPlayerOptions );
+AutoScreenMessage( SM_ConfirmDeleteSong );
 
 static RString g_sCDTitlePath;
 static bool g_bWantFallbackCdTitle;
@@ -60,6 +64,8 @@ static bool g_bSampleMusicWaiting = false;
 static RageTimer g_StartedLoadingAt(RageZeroTimer);
 static RageTimer g_ScreenStartedLoadingAt(RageZeroTimer);
 RageTimer g_CanOpenOptionsList(RageZeroTimer);
+
+static LocalizedString PERMANENTLY_DELETE("ScreenSelectMusic", "PermanentlyDelete");
 
 REGISTER_SCREEN_CLASS( ScreenSelectMusic );
 void ScreenSelectMusic::Init()
@@ -79,6 +85,7 @@ void ScreenSelectMusic::Init()
 	SAMPLE_MUSIC_LOOPS.Load( m_sName, "SampleMusicLoops" );
 	SAMPLE_MUSIC_PREVIEW_MODE.Load( m_sName, "SampleMusicPreviewMode" );
 	SAMPLE_MUSIC_FALLBACK_FADE_IN_SECONDS.Load( m_sName, "SampleMusicFallbackFadeInSeconds" );
+	SAMPLE_MUSIC_FADE_OUT_SECONDS.Load( m_sName, "SampleMusicFadeOutSeconds" );
 	DO_ROULETTE_ON_MENU_TIMER.Load( m_sName, "DoRouletteOnMenuTimer" );
 	ROULETTE_TIMER_SECONDS.Load( m_sName, "RouletteTimerSeconds" );
 	ALIGN_MUSIC_BEATS.Load( m_sName, "AlignMusicBeat" );
@@ -244,6 +251,13 @@ void ScreenSelectMusic::BeginScreen()
 		vector<StepsType> vst;
 		GAMEMAN->GetStepsTypesForGame( GAMESTATE->m_pCurGame, vst );
 		const Style *pStyle = GAMEMAN->GetFirstCompatibleStyle( GAMESTATE->m_pCurGame, GAMESTATE->GetNumSidesJoined(), vst[0] );
+		if(pStyle == NULL)
+		{
+			FAIL_M( ssprintf("No compatible styles for %s with %d player%s.",
+					GAMESTATE->m_pCurGame->m_szName,
+					GAMESTATE->GetNumSidesJoined(),
+					GAMESTATE->GetNumSidesJoined()==1?"":"s") );
+		}
 		GAMESTATE->SetCurrentStyle( pStyle, PLAYER_INVALID );
 	}
 
@@ -370,7 +384,7 @@ void ScreenSelectMusic::CheckBackgroundRequests( bool bForce )
 		PlayParams.bForceLoop = SAMPLE_MUSIC_LOOPS;
 		PlayParams.fStartSecond = m_fSampleStartSeconds;
 		PlayParams.fLengthSeconds = m_fSampleLengthSeconds;
-		PlayParams.fFadeOutLengthSeconds = 1.5f;
+		PlayParams.fFadeOutLengthSeconds = SAMPLE_MUSIC_FADE_OUT_SECONDS;
 		PlayParams.bAlignBeat = ALIGN_MUSIC_BEATS;
 		PlayParams.bApplyMusicRate = true;
 
@@ -398,6 +412,8 @@ void ScreenSelectMusic::Update( float fDeltaTime )
 
 	CheckBackgroundRequests( false );
 }
+
+
 bool ScreenSelectMusic::Input( const InputEventPlus &input )
 {
 	// HACK: This screen eats mouse inputs if we don't check for them first.
@@ -434,10 +450,25 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 		INPUTFILTER->IsBeingPressed(DeviceInput(DEVICE_KEYBOARD, KEY_LCTRL)) ||
 		INPUTFILTER->IsBeingPressed(DeviceInput(DEVICE_KEYBOARD, KEY_RCTRL));
 
+		bool holding_shift=
+		INPUTFILTER->IsBeingPressed(DeviceInput(DEVICE_KEYBOARD, KEY_LSHIFT)) ||
+		INPUTFILTER->IsBeingPressed(DeviceInput(DEVICE_KEYBOARD, KEY_RSHIFT));
+
 		wchar_t c = INPUTMAN->DeviceInputToChar(input.DeviceI,false);
 		MakeUpper( &c, 1 );
 
-		if( bHoldingCtrl && ( c >= 'A' ) && ( c <= 'Z' ) )
+		if(holding_shift && bHoldingCtrl && c == 'R' && m_MusicWheel.IsSettled())
+		{
+			// Reload the currently selected song. -Kyz
+			Song* to_reload= m_MusicWheel.GetSelectedSong();
+			if(to_reload)
+			{
+				to_reload->ReloadFromSongDir();
+				AfterMusicChange();
+				return true;
+			}
+		}
+		else if( bHoldingCtrl && ( c >= 'A' ) && ( c <= 'Z' ) )
 		{
 			// Only allow changing the sort order if the wheel is not locked
 			// and we're not in course mode. -aj
@@ -462,14 +493,32 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 				return true;
 			}
 		}
+		else if( input.DeviceI.device == DEVICE_KEYBOARD && bHoldingCtrl && input.DeviceI.button == KEY_BACK && input.type == IET_FIRST_PRESS
+			&& m_MusicWheel.IsSettled() )
+		{
+			// Keyboard shortcut to delete a song from disk (ctrl + backspace)
+			Song* songToDelete = m_MusicWheel.GetSelectedSong();
+			if ( songToDelete && PREFSMAN->m_bAllowSongDeletion.Get() ) 
+			{
+				m_pSongAwaitingDeletionConfirmation = songToDelete;
+				ScreenPrompt::Prompt(SM_ConfirmDeleteSong, ssprintf(PERMANENTLY_DELETE.GetValue(), songToDelete->m_sMainTitle.c_str(), songToDelete->GetSongDir().c_str()), PROMPT_YES_NO);
+				return true;
+			}
+		}
 	}
 
 	if( !input.GameI.IsValid() )
 		return false; // don't care
 
 	// Handle late joining
-	if( m_SelectionState != SelectionState_Finalized  &&  input.MenuI == GAME_BUTTON_START  &&  input.type == IET_FIRST_PRESS  &&  GAMESTATE->JoinInput(input.pn) )
+	// If the other player is allowed to join on the extra stage, then the
+	// summary screen will crash on invalid stage stats. -Kyz
+	if(m_SelectionState != SelectionState_Finalized &&
+		input.MenuI == GAME_BUTTON_START && input.type == IET_FIRST_PRESS &&
+		!GAMESTATE->IsAnExtraStage() && GAMESTATE->JoinInput(input.pn))
+	{
 		return true; // don't handle this press again below
+	}
 
 	if( !GAMESTATE->IsHumanPlayer(input.pn) )
 		return false;
@@ -492,7 +541,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 
 		m_bGoToOptions = true;
 		if( PLAY_SOUND_ON_ENTERING_OPTIONS_MENU )
-			m_soundStart.Play();
+			m_soundStart.Play(true);
 		this->PlayCommand( "ShowEnteringOptions" );
 
 		// Re-queue SM_BeginFadingOut, since ShowEnteringOptions may have
@@ -573,7 +622,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 					if( MODE_MENU_AVAILABLE )
 						m_MusicWheel.NextSort();
 					else
-						m_soundLocked.Play();
+						m_soundLocked.Play(true);
 					break;
 				default: break;
 			}
@@ -679,14 +728,14 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			if (input.MenuI == m_GameButtonPreviousDifficulty )
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 					ChangeSteps( input.pn, -1 );
 			}
 			else if( input.MenuI == m_GameButtonNextDifficulty )
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 					ChangeSteps( input.pn, +1 );
 			}
@@ -705,7 +754,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			if(input.MenuI == m_GameButtonPreviousGroup )
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 				{
 					RString sNewGroup = m_MusicWheel.JumpToPrevGroup();
@@ -718,7 +767,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			else if(input.MenuI == m_GameButtonNextGroup )
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 				{
 					RString sNewGroup = m_MusicWheel.JumpToNextGroup();
@@ -740,7 +789,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			if( input.MenuI == m_GameButtonPreviousSong )
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 				{
 					m_SelectionState = SelectionState_SelectingSong;
@@ -752,7 +801,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			else if( input.MenuI == m_GameButtonNextSong )
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 				{
 					m_SelectionState = SelectionState_SelectingSong;
@@ -765,7 +814,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			else if( input.MenuI == m_GameButtonPreviousDifficulty )
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 				{
 					m_SelectionState = SelectionState_SelectingSong;
@@ -776,7 +825,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			else if( input.MenuI == m_GameButtonNextDifficulty )
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 				{
 					m_SelectionState = SelectionState_SelectingSong;
@@ -788,7 +837,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			else if(input.MenuI == m_GameButtonPreviousGroup )
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 				{
 					RString sNewGroup = m_MusicWheel.JumpToPrevGroup();
@@ -802,7 +851,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			else if(input.MenuI == m_GameButtonNextGroup )
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 				{
 					RString sNewGroup = m_MusicWheel.JumpToNextGroup();
@@ -824,14 +873,14 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 				if( input.MenuI == m_GameButtonPreviousSong )
 				{
 					if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-						m_soundLocked.Play();
+						m_soundLocked.Play(true);
 					else
 						ChangeSteps( input.pn, -1 );
 				}
 				else if( input.MenuI == m_GameButtonNextSong )
 				{
 					if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-						m_soundLocked.Play();
+						m_soundLocked.Play(true);
 					else
 						ChangeSteps( input.pn, +1 );
 				}
@@ -839,7 +888,7 @@ bool ScreenSelectMusic::Input( const InputEventPlus &input )
 			else if( input.MenuI == GAME_BUTTON_MENUUP || input.MenuI == GAME_BUTTON_MENUDOWN ) // && TWO_PART_DESELECTS_WITH_MENUUPDOWN
 			{
 				if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-					m_soundLocked.Play();
+					m_soundLocked.Play(true);
 				else
 				{
 					// XXX: should this be called "TwoPartCancelled"?
@@ -869,14 +918,14 @@ bool ScreenSelectMusic::DetectCodes( const InputEventPlus &input )
 	if( CodeDetector::EnteredPrevSteps(input.GameI.controller) && !CHANGE_STEPS_WITH_GAME_BUTTONS )
 	{
 		if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-			m_soundLocked.Play();
+			m_soundLocked.Play(true);
 		else
 			ChangeSteps( input.pn, -1 );
 	}
 	else if( CodeDetector::EnteredNextSteps(input.GameI.controller) && !CHANGE_STEPS_WITH_GAME_BUTTONS )
 	{
 		if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-			m_soundLocked.Play();
+			m_soundLocked.Play(true);
 		else
 			ChangeSteps( input.pn, +1 );
 	}
@@ -885,19 +934,19 @@ bool ScreenSelectMusic::DetectCodes( const InputEventPlus &input )
 		if( MODE_MENU_AVAILABLE )
 			m_MusicWheel.ChangeSort( SORT_MODE_MENU );
 		else
-			m_soundLocked.Play();
+			m_soundLocked.Play(true);
 	}
 	else if( CodeDetector::EnteredNextSort(input.GameI.controller) )
 	{
 		if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-			m_soundLocked.Play();
+			m_soundLocked.Play(true);
 		else if( !GAMESTATE->IsCourseMode() )
 			// Only change sorts in non-course mode
 			m_MusicWheel.NextSort();
 	}
 	else if( !GAMESTATE->IsAnExtraStageAndSelectionLocked() && CodeDetector::DetectAndAdjustMusicOptions(input.GameI.controller) )
 	{
-		m_soundOptionsChange.Play();
+		m_soundOptionsChange.Play(true);
 
 		Message msg( "PlayerOptionsChanged" );
 		msg.SetParam( "PlayerNumber", input.pn );
@@ -908,7 +957,7 @@ bool ScreenSelectMusic::DetectCodes( const InputEventPlus &input )
 	else if( CodeDetector::EnteredNextGroup(input.GameI.controller) && !CHANGE_GROUPS_WITH_GAME_BUTTONS )
 	{
 		if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-			m_soundLocked.Play();
+			m_soundLocked.Play(true);
 		else
 		{
 			RString sNewGroup = m_MusicWheel.JumpToNextGroup();
@@ -921,7 +970,7 @@ bool ScreenSelectMusic::DetectCodes( const InputEventPlus &input )
 	else if( CodeDetector::EnteredPrevGroup(input.GameI.controller) && !CHANGE_GROUPS_WITH_GAME_BUTTONS )
 	{
 		if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-			m_soundLocked.Play();
+			m_soundLocked.Play(true);
 		else
 		{
 			RString sNewGroup = m_MusicWheel.JumpToPrevGroup();
@@ -934,7 +983,7 @@ bool ScreenSelectMusic::DetectCodes( const InputEventPlus &input )
 	else if( CodeDetector::EnteredCloseFolder(input.GameI.controller) )
 	{
 		if( GAMESTATE->IsAnExtraStageAndSelectionLocked() )
-			m_soundLocked.Play();
+			m_soundLocked.Play(true);
 		else
 		{
 			RString sCurSection = m_MusicWheel.GetSelectedSection();
@@ -1032,13 +1081,14 @@ void ScreenSelectMusic::ChangeSteps( PlayerNumber pn, int dir )
 	if( dir < 0 )
 	{
 		m_soundDifficultyEasier.SetProperty( "Pan", fBalance );
-		m_soundDifficultyEasier.PlayCopy();
+		m_soundDifficultyEasier.PlayCopy(true);
 	}
 	else
 	{
 		m_soundDifficultyHarder.SetProperty( "Pan", fBalance );
-		m_soundDifficultyHarder.PlayCopy();
+		m_soundDifficultyHarder.PlayCopy(true);
 	}
+	GAMESTATE->ForceOtherPlayersToCompatibleSteps(pn);
 
 	Message msg( "ChangeSteps" );
 	msg.SetParam( "Player", pn );
@@ -1167,6 +1217,18 @@ void ScreenSelectMusic::HandleScreenMessage( const ScreenMessage SM )
 	else if( SM == SM_LoseFocus )
 	{
 		CodeDetector::RefreshCacheItems(); // reset for other screens
+	}
+	else if( SM == SM_ConfirmDeleteSong )
+	{
+		if( ScreenPrompt::s_LastAnswer == ANSWER_YES )
+		{
+			OnConfirmSongDeletion();
+		}
+		else
+		{
+			// need to resume the song preview that was automatically paused
+			m_MusicWheel.ChangeMusic(0);
+		}
 	}
 
 	ScreenWithMenuElements::HandleScreenMessage( SM );
@@ -1377,7 +1439,7 @@ bool ScreenSelectMusic::MenuStart( const InputEventPlus &input )
 			if( !bAllPlayersDoneSelectingSteps )
 			{
 				m_bStepsChosen[pn] = true;
-				m_soundStart.Play();
+				m_soundStart.Play(true);
 
 				// impldiff: Pump it Up Pro uses "StepsSelected". -aj
 				Message msg("StepsChosen");
@@ -1403,7 +1465,7 @@ bool ScreenSelectMusic::MenuStart( const InputEventPlus &input )
 	Message msg( "Start" + SelectionStateToString(m_SelectionState) );
 	MESSAGEMAN->Broadcast( msg );
 
-	m_soundStart.Play();
+	m_soundStart.Play(true);
 
 	// If the MenuTimer has forced us to move on && TWO_PART_CONFIRMS_ONLY,
 	// set Selection State to finalized and move on.
@@ -1425,7 +1487,7 @@ bool ScreenSelectMusic::MenuStart( const InputEventPlus &input )
 			{
 				m_bStepsChosen[p] = true;
 				// Don't play start sound. We play it again below on finalized
-				//m_soundStart.Play();
+				//m_soundStart.Play(true);
 
 				Message lMsg("StepsChosen");
 				lMsg.SetParam( "Player", p );
@@ -1796,9 +1858,9 @@ void ScreenSelectMusic::AfterMusicChange()
 			case SampleMusicPreviewMode_Normal:
 			case SampleMusicPreviewMode_LastSong: // fall through
 				// play the sample music
-				m_sSampleMusicToPlay = pSong->GetMusicPath();
+				m_sSampleMusicToPlay = pSong->GetPreviewMusicPath();
 				m_pSampleMusicTimingData = &pSong->m_SongTiming;
-				m_fSampleStartSeconds = pSong->m_fMusicSampleStartSeconds;
+				m_fSampleStartSeconds = pSong->GetPreviewStartSeconds();
 				m_fSampleLengthSeconds = pSong->m_fMusicSampleLengthSeconds;
 				break;
 			default:
@@ -1905,6 +1967,34 @@ void ScreenSelectMusic::OpenOptionsList(PlayerNumber pn)
 		m_OptionsList[pn].Open();
 	}
 }
+
+void ScreenSelectMusic::OnConfirmSongDeletion()
+{
+	Song* deletedSong = m_pSongAwaitingDeletionConfirmation;
+	if ( !deletedSong )
+	{
+		LOG->Warn("Attempted to delete a null song (ScreenSelectMusic::OnConfirmSongDeletion)");
+		return;
+	}
+	// ensure Stepmania is configured to allow song deletion
+	if ( !PREFSMAN->m_bAllowSongDeletion.Get() )
+	{
+		LOG->Warn("Attemped to delete a song but AllowSongDeletion was set to false (ScreenSelectMusic::OnConfirmSongDeletion)");
+		return;
+	}
+
+	RString deleteDir = deletedSong->GetSongDir();
+	// flush the deleted song from any caches
+	SONGMAN->UnlistSong(deletedSong);
+	// refresh the song list
+	m_MusicWheel.ReloadSongList();
+	LOG->Trace("Deleting song: '%s'\n", deleteDir.c_str());
+	// delete the song directory from disk
+	FILEMAN->DeleteRecursive(deleteDir);
+
+	m_pSongAwaitingDeletionConfirmation = NULL;
+}
+
 
 // lua start
 #include "LuaBinding.h"

@@ -39,6 +39,7 @@
 #include "ThemeManager.h"
 #include "NoteSkinManager.h"
 #include "PrefsManager.h"
+#include "Song.h"
 #include "SongManager.h"
 #include "CharacterManager.h"
 #include "GameState.h"
@@ -184,6 +185,13 @@ bool StepMania::GetHighResolutionTextures()
 	}
 }
 
+static void update_centering()
+{
+	DISPLAY->ChangeCentering(
+		PREFSMAN->m_iCenterImageTranslateX, PREFSMAN->m_iCenterImageTranslateY,
+		PREFSMAN->m_fCenterImageAddWidth, PREFSMAN->m_fCenterImageAddHeight);
+}
+
 static void StartDisplay()
 {
 	if( DISPLAY != NULL )
@@ -191,11 +199,7 @@ static void StartDisplay()
 
 	DISPLAY = CreateDisplay();
 
-	DISPLAY->ChangeCentering(
-		PREFSMAN->m_iCenterImageTranslateX,
-		PREFSMAN->m_iCenterImageTranslateY,
-		PREFSMAN->m_fCenterImageAddWidth,
-		PREFSMAN->m_fCenterImageAddHeight );
+	update_centering();
 
 	TEXTUREMAN	= new RageTextureManager;
 	TEXTUREMAN->SetPrefs(
@@ -227,11 +231,7 @@ void StepMania::ApplyGraphicOptions()
 	if( sError != "" )
 		RageException::Throw( "%s", sError.c_str() );
 
-	DISPLAY->ChangeCentering(
-		PREFSMAN->m_iCenterImageTranslateX,
-		PREFSMAN->m_iCenterImageTranslateY,
-		PREFSMAN->m_fCenterImageAddWidth,
-		PREFSMAN->m_fCenterImageAddHeight );
+	update_centering();
 
 	bNeedReload |= TEXTUREMAN->SetPrefs(
 		RageTextureManagerPrefs(
@@ -354,9 +354,17 @@ void StepMania::ResetGame()
 ThemeMetric<RString>	INITIAL_SCREEN	("Common","InitialScreen");
 RString StepMania::GetInitialScreen()
 {
-	if( PREFSMAN->m_sTestInitialScreen.Get() != "" )
+	if(PREFSMAN->m_sTestInitialScreen.Get() != "" &&
+		SCREENMAN->IsScreenNameValid(PREFSMAN->m_sTestInitialScreen))
+	{
 		return PREFSMAN->m_sTestInitialScreen;
-	return INITIAL_SCREEN.GetValue();
+	}
+	RString screen_name= INITIAL_SCREEN.GetValue();
+	if(!SCREENMAN->IsScreenNameValid(screen_name))
+	{
+		screen_name= "ScreenInitialScreenIsInvalid";
+	}
+	return screen_name;
 }
 ThemeMetric<RString>	SELECT_MUSIC_SCREEN	("Common","SelectMusicScreen");
 RString StepMania::GetSelectMusicScreen()
@@ -957,7 +965,7 @@ static void ApplyLogPreferences()
 
 static LocalizedString COULDNT_OPEN_LOADING_WINDOW( "LoadingWindow", "Couldn't open any loading windows." );
 
-int main(int argc, char* argv[])
+int sm_main(int argc, char* argv[])
 {
 	RageThreadRegister thread( "Main thread" );
 	RageException::SetCleanupHandler( HandleException );
@@ -1465,7 +1473,7 @@ bool HandleGlobalInputs( const InputEventPlus &input )
 								|| INPUTFILTER->IsBeingPressed( DeviceInput(DEVICE_KEYBOARD, KEY_RSHIFT) ) );
 		bool bSaveCompressed = !bHoldingShift;
 		RageTimer timer;
-		StepMania::SaveScreenshot( "Screenshots/", bSaveCompressed, false, "", "" );
+		StepMania::SaveScreenshot("Screenshots/", bSaveCompressed, false, "", "");
 		LOG->Trace( "Screenshot took %f seconds.", timer.GetDeltaTime() );
 		return true; // handled
 	}
@@ -1586,7 +1594,6 @@ void HandleInputEvents(float fDeltaTime)
 		if( GAMESTATE->IsEventMode() &&
 			CodeDetector::EnteredCode(input.GameI.controller,CODE_BACK_IN_EVENT_MODE) )
 		{
-			input.pn = PLAYER_1;
 			input.MenuI = GAME_BUTTON_BACK;
 		}
 
@@ -1641,6 +1648,13 @@ void LuaFunc_Register_SaveScreenshot(lua_State *L);
 void LuaFunc_Register_SaveScreenshot(lua_State *L)
 { lua_register(L, "SaveScreenshot", LuaFunc_SaveScreenshot); }
 REGISTER_WITH_LUA_FUNCTION(LuaFunc_Register_SaveScreenshot);
+
+static int LuaFunc_update_centering(lua_State* L)
+{
+	update_centering();
+	return 0;
+}
+LUAFUNC_REGISTER_COMMON(update_centering);
 
 /*
  * (c) 2001-2004 Chris Danford, Glenn Maynard

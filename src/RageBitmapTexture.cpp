@@ -29,7 +29,7 @@ static void GetResolutionFromFileName( RString sPath, int &iWidth, int &iHeight 
 	// Check for nonsense values.  Some people might not intend the hint. -Kyz
 	int maybe_width= StringToInt(asMatches[0]);
 	int maybe_height= StringToInt(asMatches[1]);
-	if(maybe_width <= 0 || maybe_height <= 0 || maybe_width > iWidth || maybe_height > iHeight)
+	if(maybe_width <= 0 || maybe_height <= 0)
 	{
 		return;
 	}
@@ -85,8 +85,10 @@ void RageBitmapTexture::Create()
 	/* Tolerate corrupt/unknown images. */
 	if( pImg == NULL )
 	{
-		RString sWarning = ssprintf( "RageBitmapTexture: Couldn't load %s: %s", actualID.filename.c_str(), error.c_str() );
-		Dialog::OK( sWarning );
+		RString warning = ssprintf("RageBitmapTexture: Couldn't load %s: %s",
+			actualID.filename.c_str(), error.c_str());
+		LOG->Warn(warning);
+		Dialog::OK(warning, "missing_texture");
 		pImg = RageSurfaceUtils::MakeDummySurface( 64, 64 );
 		ASSERT( pImg != NULL );
 	}

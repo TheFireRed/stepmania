@@ -258,7 +258,8 @@ void ScreenEvaluation::Init()
 	{
 		if( SUMMARY )
 		{
-			for( unsigned i=0; i<m_pStageStats->m_vpPlayedSongs.size(); i++ )
+			for( size_t i=0; i<m_pStageStats->m_vpPlayedSongs.size()
+						 && i < MAX_SONGS_TO_SHOW; i++ )
 			{
 				Song *pSong = m_pStageStats->m_vpPlayedSongs[i];
 
@@ -772,7 +773,7 @@ bool ScreenEvaluation::MenuStart( const InputEventPlus &input )
 	if( IsTransitioning() )
 		return false;
 
-	m_soundStart.Play();
+	m_soundStart.Play(true);
 
 	HandleMenuStart();
 	return true;
